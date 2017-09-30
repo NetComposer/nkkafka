@@ -1,0 +1,10 @@
+log
+ebin
+deps
+.DS_Store
+/nkelastic.iml
+/.rebar3
+/_build
+.idea
+_checkouts
+nkdomain.version
