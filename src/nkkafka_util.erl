@@ -22,6 +22,7 @@
 
 -module(nkkafka_util).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
+-export([send_callback_ack/1]).
 -export([get_metadata/2, get_metadata/3, resolve_offset/5, fetch/5, fetch/8]).
 -export([process_messages/1]).
 
@@ -38,6 +39,14 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+%% @doc Must be called from group subscribers callbacks
+-spec send_callback_ack(nkkafka:msg()) ->
+    ok.
+
+send_callback_ack(#{pid:=Pid, topic:=Topic, partition:=Partition, offset:=Offset}) ->
+    nkkafka:group_subscriber_ack(Pid, Topic, Partition, Offset).
+
 
 %% @doc
 -spec get_metadata(nkservice:id(), nkkafka:client_id()) ->
@@ -79,10 +88,13 @@ resolve_offset(SrvId, ClientId, Topic, Partition, Time) ->
     end.
 
 
+
+%% @doc
 fetch(SrvId, ClientId, Topic, Partition, Offset) ->
     fetch(SrvId, ClientId, Topic, Partition, Offset, 1000, 0, 10000).
 
 
+%% @doc
 fetch(SrvId, ClientId, Topic, Partition, Offset, WaitTime, MinBytes, MaxBytes) ->
     case find_hosts(SrvId, ClientId) of
         {ok, Hosts} ->
@@ -162,22 +174,11 @@ process_messages([R|Rest], Acc) ->
 find_hosts(SrvId, ClientId) ->
     #{nkkafka_clients:=Clients} = SrvId:config(),
     case maps:find(to_bin(ClientId), Clients) of
-        {ok, #{host:=Host, port:=Port}} ->
-            {ok, [{binary_to_list(Host), Port}]};
+        {ok, #{nodes:=Nodes}} ->
+            {ok, Nodes};
         error ->
             {error, client_not_found}
     end.
-
-
-%%%% @private
-%%find_client(SrvId, ClientId) ->
-%%    Clients = SrvId:config_nkkafka(),
-%%    case maps:find(to_bin(ClientId), Clients) of
-%%        {ok, Name} ->
-%%            {ok, Name};
-%%        error ->
-%%            {error, client_not_found}
-%%    end.
 
 
 %% @private

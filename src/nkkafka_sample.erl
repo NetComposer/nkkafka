@@ -24,7 +24,7 @@
 -compile(export_all).
 
 -include_lib("nkservice/include/nkservice.hrl").
--define(SRV, kafka_sample).
+-define(SRV, kafka_test).
 
 %% ===================================================================
 %% Public
@@ -37,7 +37,44 @@ start() ->
         callback => ?MODULE,
         nkkafka => [
             #{
-                host => <<"localhost">>
+                nodes => [
+                    #{host => <<"localhost">>}
+                ],
+                clients => [
+                    #{
+                        id => id,
+                        type => raw,
+                        client_config => #{
+                            restart_delay_seconds => 10
+                        }
+                    },
+                    #{
+                        id => id2,
+                        type => producer,
+                        topics => [topic1, <<"my-topic3">>],
+                        client_config => #{
+                            restart_delay_seconds => 11
+                        },
+                        producer_config => #{
+                            required_acks => -1
+                        }
+                    },
+                    #{
+                        id => id3,
+                        type => consumer_group,
+                        group_id => my_group,
+                        topics => "my-topic3",
+                        client_config => #{
+                            restart_delay_seconds => 11
+                        },
+                        consumer_config => #{
+                            min_bytes => 0
+                        },
+                        group_config => #{
+                            session_timeout_seconds => 10
+                        }
+                    }
+                ]
             }
         ]
         %debug => [{nkkafka, [full]}]
@@ -55,34 +92,34 @@ plugin_deps() ->
 
 
 start_producer(Topic) ->
-    nkkafka:start_producer(?SRV, main, Topic).
+    nkkafka:start_producer(?SRV, local, Topic).
 
 
 get_partitions_count(Topic) ->
-    nkkafka:get_partitions_count(?SRV, main, Topic).
+    nkkafka:get_partitions_count(?SRV, local, Topic).
 
 
 get_producer(Topic) ->
-    nkkafka:get_producer(?SRV, main, Topic, 0).
+    nkkafka:get_producer(?SRV, local, Topic, 0).
 
 
 produce(Topic, Key, Val) ->
-    nkkafka:produce_sync(?SRV, main, Topic, 0, to_bin(Key), to_bin(Val)).
+    nkkafka:produce_sync(?SRV, local, Topic, 0, to_bin(Key), to_bin(Val)).
 
 produce2(Topic, Key, Val) ->
-    nkkafka:produce_sync(?SRV, main, Topic, 0, <<>>, [{nklib_util:m_timestamp(), to_bin(Key), to_bin(Val)}]).
+    nkkafka:produce_sync(?SRV, local, Topic, 0, <<>>, [{nklib_util:m_timestamp(), to_bin(Key), to_bin(Val)}]).
 
 
 start_consumer(Topic) ->
-    nkkafka:start_consumer(?SRV, main, Topic).
+    nkkafka:start_consumer(?SRV, local, Topic).
 
 
 get_consumer(Topic) ->
-    nkkafka:get_consumer(?SRV, main, Topic, 0).
+    nkkafka:get_consumer(?SRV, local, Topic, 0).
 
 
 subscribe(Topic) ->
-    nkkafka:subscribe(?SRV, main, whereis(?SRV), Topic, 0, #{}).
+    nkkafka:subscribe(?SRV, local, whereis(?SRV), Topic, 0, #{}).
 
 
 
@@ -92,15 +129,15 @@ subscribe(Topic) ->
 
 
 get_metadata() ->
-    nkkafka_util:get_metadata(?SRV, main).
+    nkkafka_util:get_metadata(?SRV, local).
 
 
 resolve_offset(Topic, Time) ->
-    nkkafka_util:resolve_offset(?SRV, main, Topic, 0, Time).
+    nkkafka_util:resolve_offset(?SRV, local, Topic, 0, Time).
 
 
 fetch(Topic, Offset) ->
-    nkkafka_util:fetch(?SRV, main, Topic, 0, Offset).
+    nkkafka_util:fetch(?SRV, local, Topic, 0, Offset).
 
 
 

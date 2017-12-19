@@ -23,7 +23,7 @@
 -module(nkkafka_callbacks).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([kafka_message_set/4]).
+-export([kafka_message/3]).
 -export([service_handle_info/2]).
 
 -include("nkkafka.hrl").
@@ -45,8 +45,19 @@
 %% Offered callbacks
 %% ===================================================================
 
-kafka_message_set(Topic, Partition, Messages, Opts) ->
-    lager:notice("Kafka Message Set (~s, ~p, ~p): ~p", [Topic, Partition, Opts, Messages]),
+%% @doc Called when the service starts a subscriber group and a message is received in any
+%% topic or partition of the group
+%% Must spawn or it will block the processor
+%% Must call nkkafka_util:send_callback_ack/1 to acknowledge
+-spec kafka_message(nkkafka:group_id(), nkkafka:topic(), nkkafka:msg()) ->
+    ok.
+
+kafka_message(_GroupId, _Topic, Data) ->
+    spawn_link(
+        fun() ->
+            lager:notice("Ignoring Kafka message: ~p", [Data])
+            % nkkafka_util:send_callback_ack(Data)
+        end),
     ok.
 
 
