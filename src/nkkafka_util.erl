@@ -23,7 +23,7 @@
 -module(nkkafka_util).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([send_callback_ack/1]).
--export([get_metadata/2, get_metadata/3, resolve_offset/5, fetch/5, fetch/8]).
+-export([get_metadata/2, get_metadata/3, resolve_offset/4, resolve_offset/5, fetch/5, fetch/8]).
 -export([process_messages/1]).
 
 -include_lib("brod/include/brod.hrl").
@@ -74,6 +74,20 @@ get_metadata(SrvId, ClientId, Topics) ->
     end.
 
 
+%% @doc Gets last offset for a partition
+-spec resolve_offset(nkservice:id(), nkkafka:client(), nkkafka:topic(),
+                     nkkafka:partion()) ->
+    {ok, integer()} | {error, term()}.
+
+resolve_offset(SrvId, ClientId, Topic, Partition) ->
+    case find_hosts(SrvId, ClientId) of
+        {ok, Hosts} ->
+            brod:resolve_offset(Hosts, to_bin(Topic), Partition);
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
 %% @doc
 -spec resolve_offset(nkservice:id(), nkkafka:client(), nkkafka:topic(),
                      nkkafka:partion(), offset_time()) ->
@@ -91,7 +105,7 @@ resolve_offset(SrvId, ClientId, Topic, Partition, Time) ->
 
 %% @doc
 fetch(SrvId, ClientId, Topic, Partition, Offset) ->
-    fetch(SrvId, ClientId, Topic, Partition, Offset, 1000, 0, 10000).
+    fetch(SrvId, ClientId, Topic, Partition, Offset, 5000, 0, 100000).
 
 
 %% @doc
@@ -112,6 +126,11 @@ fetch(SrvId, ClientId, Topic, Partition, Offset, WaitTime, MinBytes, MaxBytes) -
 %% @doc
 process_messages(List) ->
     process_messages(List, []).
+
+
+
+
+
 
 
 

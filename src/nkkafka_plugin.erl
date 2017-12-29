@@ -23,7 +23,7 @@
 -module(nkkafka_plugin).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([plugin_deps/0, plugin_syntax/0, plugin_config/2, plugin_start/2]).
--export([client_syntax_check/1]).
+-export([start_client/2, client_syntax_check/1]).
 
 %% ===================================================================
 %% Plugin callbacks
@@ -126,16 +126,11 @@ plugin_config(Config, _Service) ->
 
 
 %% @private
-plugin_start(#{nkkafka_clients:=Clusters}=Config, #{id:=SrvId}) ->
-    lists:foreach(
-        fun(Client) -> start_client(SrvId, Client) end,
-        maps:values(Clusters)
-    ),
-    {ok, Config};
+%% We cannot start the clients here, since they can start sending messages and
+%% the service callback is not yet created
 
 plugin_start(Config, _Service) ->
     {ok, Config}.
-
 
 
 

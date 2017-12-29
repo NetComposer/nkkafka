@@ -193,7 +193,13 @@ produce(Pid, Value) ->
     {ok, call_ref()} | {error, any()}.
 
 produce(ProducerPid, Key, Value) ->
-    brod_producer:produce(ProducerPid, Key, Value).
+    Value2 = case is_map(Value) of
+        true ->
+            nklib_json:encode(Value);
+        false ->
+            Value
+    end,
+    brod_producer:produce(ProducerPid, Key, Value2).
 
 
 %% @doc Produce one message if Value is binary or iolist,

@@ -24,7 +24,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
 -export([kafka_message/3]).
--export([service_handle_info/2]).
+-export([service_init/2, service_handle_info/2]).
 
 -include("nkkafka.hrl").
 -include_lib("nkservice/include/nkservice.hrl").
@@ -61,6 +61,24 @@ kafka_message(_GroupId, _Topic, Data) ->
     ok.
 
 
+
+%% ===================================================================
+%% Implemented callbacks
+%% ===================================================================
+
+
+service_init(Service, #{id:=SrvId}=State) ->
+    case Service of
+        #{config:=#{nkkafka_clients:=Clusters}} ->
+            lists:foreach(
+                fun(Client) -> nkkafka_plugin:start_client(SrvId, Client) end,
+                maps:values(Clusters));
+        _ ->
+            ok
+    end,
+    {ok, State}.
+
+
 service_handle_info({_SubPid, #kafka_message_set{}=Set}, #{id:=Id}=State) ->
     #kafka_message_set{
         topic = Topic,
@@ -74,7 +92,5 @@ service_handle_info({_SubPid, #kafka_message_set{}=Set}, #{id:=Id}=State) ->
 
 service_handle_info(_Msg, _State) ->
     continue.
-
-
 
 
