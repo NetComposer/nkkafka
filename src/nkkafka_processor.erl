@@ -45,6 +45,7 @@
 
 
 
+-include("nkkafka.hrl").
 -include_lib("brod/include/brod.hrl").
 -include_lib("nkservice/include/nkservice.hrl").
 
@@ -239,6 +240,8 @@ get_all() ->
 -record(state, {
     id :: #processor_id{},
     offset :: integer(),
+    luerl_pid :: pid() | undefined,
+    luerl_spec :: map() | undefined,
     user :: map(),
     debug :: boolean()
 }).
@@ -269,13 +272,14 @@ init(ProcessorId) ->
     },
     Debug = nkservice_util:get_debug(SrvId, {nkkafka, PackageId, processor}),
     {ok, User2} = ?CALL_SRV(SrvId, kafka_processor_init, [User]),
-    State = #state{
+    State1 = #state{
         id = ProcessorId,
         offset = -1,
         user = User2,
         debug = Debug == true
     },
-    {ok, State}.
+    State2 = start_luerl(State1),
+    {ok, State2}.
 
 
 %% @private
@@ -285,7 +289,13 @@ init(ProcessorId) ->
 
 handle_call({process, Pid, Msg}, From, State) ->
     #{offset:=Offset} = Msg,
-    #state{id=Id, offset=Current, user=User} = State,
+    #state{
+        id = Id,
+        offset = Current,
+        luerl_pid = LuerlPid,
+        luerl_spec = LuerlSpec,
+        user = User
+    } = State,
     % Allow next message
     gen_server:reply(From, ok),
     ?DEBUG("processing (~p, kakfka:~p) ~p", [self(), Pid, Msg], State),
@@ -294,6 +304,19 @@ handle_call({process, Pid, Msg}, From, State) ->
             User2 = try
                 #processor_id{srv_id=SrvId} = Id,
                 case ?CALL_SRV(SrvId, kafka_processor_msg, [Msg, User]) of
+                    continue when LuerlPid == undefined ->
+                        lager:notice("Ignoring Kafka message: ~p ~p", [Msg, State]),
+                        User;
+                    continue ->
+                        ?DEBUG("calling luerl callback", [], State),
+                        case nkservice_luerl_instance:call_callback(LuerlPid, LuerlSpec, [Msg, User]) of
+                            {ok, _} ->
+                                ok;
+                            {error, Error} ->
+                                ?LLOG(warning, "error calling kafka_processor luerl (~p): ~p",
+                                    [Offset, Error], Id)
+                        end,
+                        User;
                     {ok, NewUser} ->
                         NewUser;
                     Other ->
@@ -302,9 +325,9 @@ handle_call({process, Pid, Msg}, From, State) ->
                         User
                 end
             catch
-                error:Error ->
+                error:CError ->
                     ?LLOG(warning, "error calling kafka_processor_msg (~p): ~p (~p)",
-                        [Offset, Error, erlang:get_stacktrace()], Id),
+                        [Offset, CError, erlang:get_stacktrace()], Id),
                     User
             end,
             State#state{offset=Offset, user=User2};
@@ -335,6 +358,11 @@ handle_cast(Msg, State) ->
 %% @private
 -spec handle_info(term(), #state{}) ->
     {noreply, #state{}} | {stop, term(), #state{}}.
+
+handle_info({'DOWN', _Ref, process, Pid, Reason}, #state{id=Id, luerl_pid=Pid}=State) ->
+    ?LLOG(notice, "luerl instance down: ~p", [Reason], Id),
+    State2 = start_luerl(State),
+    {noreply, State2};
 
 handle_info(Info, State) ->
     lager:warning("Module ~p received unexpected info: ~p (~p)", [?MODULE, Info, State]),
@@ -368,6 +396,23 @@ send_ack(Id, Pid, Offset) ->
     %            [Pid, Topic, Partition, Offset]),
     nkkafka:group_subscriber_ack(Pid, Topic, Partition, Offset),
     ok.
+
+
+start_luerl(#state{id=#processor_id{srv_id=SrvId, package_id=PackageId}}=State) ->
+    case nkservice_util:get_callback(SrvId, ?PKG_KAFKA, PackageId, consumerGroupCallback) of
+        #{
+            class := luerl,
+            module_id := ModuleId
+        } = Spec ->
+            {ok, Pid} =
+                nkservice_luerl_instance:start(SrvId, ModuleId, make_ref(), #{monitor=>self()}),
+            ?DEBUG("started luerl instance: ~p", [Pid], State),
+            monitor(process, Pid),
+            State#state{luerl_pid=Pid, luerl_spec=Spec};
+        _ ->
+            State
+    end.
+
 
 
 %%%% @private

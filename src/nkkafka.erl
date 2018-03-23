@@ -33,12 +33,12 @@
 -export([get_partitions_count/3, find_client/2]).
 -export([start_link_topic_subscriber/9, topic_subscriber_stop/1, topic_subscriber_ack/3]).
 -export([start_link_group_subscriber/9, group_subscriber_stop/1, group_subscriber_ack/4]).
+-export([luerl_produce/3]).
 -export_type([client_config/0, msg/0]).
 
 -include_lib("brod/include/brod.hrl").
 
 -define(LLOG(Type, Txt, Args),lager:Type("NkKAFKA "++Txt, Args)).
-
 
 %% ===================================================================
 %% Types
@@ -483,6 +483,32 @@ group_subscriber_stop(Pid) ->
 
 
 
+%% ===================================================================
+%% Luerl
+%% ===================================================================
+
+%% @private
+luerl_produce(SrvId, PackageId, [Topic, Key, Value]) ->
+    case get_partitions_count(SrvId, PackageId, Topic) of
+        {ok, Parts} ->
+            Partition = case Key of
+                <<>> ->
+                    nklib_util:rand(0, Parts-1);
+                _ ->
+                    nklib_util:hash(Key, 0, Parts-1)
+            end,
+            luerl_produce(SrvId, PackageId, [Topic, Key, Value, Partition]);
+        {error, Error} ->
+            {error, Error}
+    end;
+
+luerl_produce(SrvId, PackageId, [Topic, Key, Value, Partition]) ->
+    case produce_sync(SrvId, PackageId, Topic, Partition, Key, Value) of
+        ok ->
+            [<<"ok">>];
+        {error, Error} ->
+            {error, Error}
+    end.
 
 
 %% ===================================================================

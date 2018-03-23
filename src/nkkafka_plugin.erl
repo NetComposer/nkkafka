@@ -22,7 +22,7 @@
 
 -module(nkkafka_plugin).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([plugin_deps/0, plugin_config/3, plugin_start/4, plugin_update/5]).
+-export([plugin_deps/0, plugin_api/1, plugin_config/3, plugin_start/4, plugin_update/5]).
 -export([client_syntax_check/1]).
 -export([syntax/0]).
 
@@ -42,6 +42,18 @@ plugin_deps() ->
     [].
 
 
+%% @doc
+plugin_api(?PKG_KAFKA) ->
+    #{
+        luerl => #{
+            produce => {nkkafka, luerl_produce}
+        }
+    };
+
+plugin_api(_Class) ->
+    #{}.
+
+
 %% @private
 plugin_config(?PKG_KAFKA, #{id:=Id, config:=Config}=Spec, #{id:=SrvId}) ->
 	Syntax = syntax(),
@@ -51,8 +63,8 @@ plugin_config(?PKG_KAFKA, #{id:=Id, config:=Config}=Spec, #{id:=SrvId}) ->
             BrodClientId2 = binary_to_atom(BrodClientId1, utf8),
             CacheMap = #{
                 {nkkafka, Id, brod_client} => BrodClientId2,
-                {nkkafka, Id, consumer_config} => maps:get(consumer_config, Parsed, #{}),
-                {nkkafka, Id, producer_config} => maps:get(producer_config, Parsed, #{})
+                {nkkafka, Id, consumer_config} => maps:get(consumerConfig, Parsed, #{}),
+                {nkkafka, Id, producer_config} => maps:get(producerConfig, Parsed, #{})
             },
             DebugMap = lists:foldl(
                 fun(DebugItem, Acc) -> Acc#{{nkkafka, Id, DebugItem} => true} end,
@@ -111,7 +123,7 @@ syntax() ->
             '__defaults' => #{host=><<"127.0.0.1">>, port=>9092}
         }},
         %% @see nkkafka:client_config()
-        client_config => #{
+        clientConfig => #{
             restart_delay_seconds => integer,
             max_metadata_sock_retry => integer,
             get_metadata_timeout_seconds => integer,
@@ -125,7 +137,7 @@ syntax() ->
         },
         %% @see nkkafka:producer_config()
         %% It will be used by producers by default
-        producer_config => #{
+        producerConfig => #{
             required_acks => {integer, -1, 1},
             ack_timeout => integer,
             partition_buffer_limit => integer,
@@ -140,7 +152,7 @@ syntax() ->
         },
         %% @see nkkafka:consumer_config()
         %% It will be used by consumers (and subscribers?) by default
-        consumer_config => #{
+        consumerConfig => #{
             min_bytes => pos_integer,
             max_bytes => pos_integer,
             max_wait_time => pos_integer,
@@ -151,9 +163,9 @@ syntax() ->
             size_stat_window => integer
         },
         %% @see nkkafka:group_config()
-        consumer_group_id => binary,                % It will start if defined
-        consumer_group_topics => {list, binary},
-        consumer_group_config => #{
+        consumerGroupId => binary,                % It will start if defined
+        consumerGroupTopics => {list, binary},
+        consumerGroupConfig => #{
             partition_assignment_strategy => {atom, [roundrobin, callback_implemented]},
             session_timeout_seconds => integer,
             heartbeat_rate_seconds => integer,
@@ -175,9 +187,9 @@ insert(Id, Config, SupPid, #{id:=SrvId}) ->
     #{brod_client_id:=BrodId, nodes:=Nodes1} = Config,
     Nodes2 = [{nklib_util:to_list(Host), Port} || #{host:=Host, port:=Port} <- Nodes1],
     Childs1 = case Config of
-        #{consumer_group_id:=GroupId, consumer_group_topics:=Topics} ->
-            ConsumerConfig = maps:to_list(maps:get(consumer_config, Config, #{})),
-            GroupConfig = maps:to_list(maps:get(consumer_group_config, Config, #{})),
+        #{consumerGroupId:=GroupId, consumerGroupTopics:=Topics} ->
+            ConsumerConfig = maps:to_list(maps:get(consumerConfig, Config, #{})),
+            GroupConfig = maps:to_list(maps:get(consumerGroupConfig, Config, #{})),
             Args = [
                 BrodId, GroupId, Topics, GroupConfig, ConsumerConfig,
                 message_set, nkkafka_processor, {SrvId, Id, #{}}
@@ -191,7 +203,7 @@ insert(Id, Config, SupPid, #{id:=SrvId}) ->
         _ ->
             []
     end,
-    ClientConfig = maps:to_list(maps:get(client_config, Config, #{})),
+    ClientConfig = maps:to_list(maps:get(clientConfig, Config, #{})),
     Childs2 =  [
         #{
             id => {client, BrodId},
@@ -217,10 +229,10 @@ insert(Id, Config, SupPid, #{id:=SrvId}) ->
 
 client_syntax_check(Client) ->
     case maps:from_list(Client) of
-        #{consumer_group_id:=_, consumer_group_topics:=_} ->
+        #{consumerGroupId:=_, consumerGroupTopics:=_} ->
             ok;
-        #{consumer_group_id:=_} ->
-            {error, {missing_field, <<"consumer_group_topics">>}};
+        #{consumerGroupId:=_} ->
+            {error, {missing_field, <<"consumerGroupTopics">>}};
         _ ->
             ok
     end.

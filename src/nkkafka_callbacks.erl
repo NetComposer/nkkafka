@@ -53,11 +53,11 @@ kafka_processor_init(State) ->
 %% (and not received again)
 
 -spec kafka_processor_msg(nkkafka_processor:msg(), nkkafka_processor:state()) ->
-    {ok, nkkafka_processor:state()}.
+    {ok, nkkafka_processor:state()} | continue.
 
-kafka_processor_msg(Msg, State) ->
-    lager:notice("Ignoring Kafka message: ~p ~p", [Msg, State]),
-    {ok, State}.
+kafka_processor_msg(_Msg, _State) ->
+    % Will try luerl callback if available
+    continue.
 
 
 

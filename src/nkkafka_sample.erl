@@ -44,10 +44,10 @@ start() ->
                 class => 'Kafka',
                 config => #{
                     nodes => [#{host => <<"localhost">>}],
-                    client_config => #{
+                    clientConfig => #{
                         restart_delay_seconds => 10
                     },
-                    producer_config => #{
+                    producerConfig => #{
                         required_acks => -1
                     }
                 }
@@ -57,29 +57,29 @@ start() ->
                 class => 'Kafka',
                 config => #{
                     nodes => [#{host => <<"localhost">>}],
-                    consumer_group_id => my_group,
-                    consumer_group_topics => "topic6",
-                    client_config => #{
+                    consumerGroupId => my_group,
+                    consumerGroupTopics => "topic6",
+                    clientConfig => #{
                         restart_delay_seconds => 11
                     },
-                    consumer_config => #{
+                    consumerConfig => #{
                         prefetch_count => 0
                     },
-                    group_config => #{
-                        session_timeout_seconds => 10
+                    consumerGroupConfig => #{
+                        session_timeout_seconds => 12
                     },
                     debug => processor
                 }
             }
+        ],
+        modules => [
+            #{
+                id => s1,
+                class => luerl,
+                code => s1(),
+                debug => true
+            }
         ]
-%%        modules => [
-%%            #{
-%%                id => s1,
-%%                class => luerl,
-%%                code => s1(),
-%%                debug => true
-%%            }
-%%        ]
     },
     nkservice:start(?SRV, Spec).
 
@@ -89,35 +89,39 @@ stop() ->
     nkservice:stop(?SRV).
 
 
-getRequest() ->
-    nkservice_luerl_instance:call({?SRV, s1, main}, [getRequest], []).
+produce(Key, Val) ->
+    nkservice_luerl_instance:call({?SRV, s1, main}, [produce], [topic6, Key, Val]).
 
 
-%%s1() -> <<"
-%%    esConfig = {
-%%        targets = {
-%%            {
-%%                url = 'http://127.0.0.1:9200',
-%%                weight = 100,
-%%                pool = 5
-%%            }
-%%        },
-%%        resolveInterval = 0,
-%%        debug = {'full', 'pooler'}
-%%    }
-%%
-%%    es = startPackage('Elastic', esConfig)
-%%
-%%    function getRequest()
-%%        return es.request('get', '/')
-%%    end
-%%
-%%">>.
-%%
-%%
-%%opts() ->
-%%    nkservice_util:get_cache(?SRV, {nkelastic, <<"es1">>, opts}).
-%%
+s1() -> <<"
+    messageCB = function(msg, info)
+        log.info('LUERL Incoming Message: ' .. json.encodePretty(msg) .. ' info: ' .. json.encodePretty(info))
+    end
+
+    kafkaConfig = {
+        nodes = { {host = 'localhost'} },
+        consumerGroupId = 'my_group_2',
+        consumerGroupTopics = 'topic6',
+        clientConfig = { restart_delay_seconds = 13 },
+        consumerConfig = { prefetch_count = 5 },
+        consumerGroupConfig = { session_timeout_seconds = 15 },
+        debug = 'processor',
+
+        consumerGroupCallback = messageCB
+    }
+
+    kafka = startPackage('Kafka', kafkaConfig)
+
+    function produce(topic, key, val)
+        return kafka.produce(topic, key, val)
+    end
+
+">>.
+
+
+opts() ->
+    nkservice_util:get_cache(?SRV, {nkelastic, <<"es1">>, opts}).
+
 
 
 get_partitions_count(Topic) ->
