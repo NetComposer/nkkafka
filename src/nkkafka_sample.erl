@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2017 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -21,7 +21,9 @@
 %% @doc 
 -module(nkkafka_sample).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
+
 -compile(export_all).
+-compile(nowarn_export_all).
 
 -include_lib("nkservice/include/nkservice.hrl").
 -define(SRV, kafka_test).
@@ -31,53 +33,53 @@
 %% ===================================================================
 
 
+
 %% @doc Starts the service
 start() ->
     Spec = #{
-        callback => ?MODULE,
-        nkkafka => [
+        plugins => [?MODULE],
+        packages => [
             #{
-                nodes => [
-                    #{host => <<"localhost">>}
-                ],
-                clients => [
-                    #{
-                        id => id,
-                        type => raw,
-                        client_config => #{
-                            restart_delay_seconds => 10
-                        }
+                id => k1,
+                class => 'Kafka',
+                config => #{
+                    nodes => [#{host => <<"localhost">>}],
+                    client_config => #{
+                        restart_delay_seconds => 10
                     },
-                    #{
-                        id => id2,
-                        type => producer,
-                        topics => [topic1, <<"my-topic3">>],
-                        client_config => #{
-                            restart_delay_seconds => 11
-                        },
-                        producer_config => #{
-                            required_acks => -1
-                        }
-                    },
-                    #{
-                        id => id3,
-                        type => consumer_group,
-                        group_id => my_group,
-                        topics => "my-topic3",
-                        client_config => #{
-                            restart_delay_seconds => 11
-                        },
-                        consumer_config => #{
-                            min_bytes => 0
-                        },
-                        group_config => #{
-                            session_timeout_seconds => 10
-                        }
+                    producer_config => #{
+                        required_acks => -1
                     }
-                ]
+                }
+            },
+            #{
+                id => k2,
+                class => 'Kafka',
+                config => #{
+                    nodes => [#{host => <<"localhost">>}],
+                    consumer_group_id => my_group,
+                    consumer_group_topics => "topic6",
+                    client_config => #{
+                        restart_delay_seconds => 11
+                    },
+                    consumer_config => #{
+                        prefetch_count => 0
+                    },
+                    group_config => #{
+                        session_timeout_seconds => 10
+                    },
+                    debug => processor
+                }
             }
         ]
-        %debug => [{nkkafka, [full]}]
+%%        modules => [
+%%            #{
+%%                id => s1,
+%%                class => luerl,
+%%                code => s1(),
+%%                debug => true
+%%            }
+%%        ]
     },
     nkservice:start(?SRV, Spec).
 
@@ -87,57 +89,66 @@ stop() ->
     nkservice:stop(?SRV).
 
 
-plugin_deps() ->
-    [nkkafka].
+getRequest() ->
+    nkservice_luerl_instance:call({?SRV, s1, main}, [getRequest], []).
 
 
-start_producer(Topic) ->
-    nkkafka:start_producer(?SRV, local, Topic).
+%%s1() -> <<"
+%%    esConfig = {
+%%        targets = {
+%%            {
+%%                url = 'http://127.0.0.1:9200',
+%%                weight = 100,
+%%                pool = 5
+%%            }
+%%        },
+%%        resolveInterval = 0,
+%%        debug = {'full', 'pooler'}
+%%    }
+%%
+%%    es = startPackage('Elastic', esConfig)
+%%
+%%    function getRequest()
+%%        return es.request('get', '/')
+%%    end
+%%
+%%">>.
+%%
+%%
+%%opts() ->
+%%    nkservice_util:get_cache(?SRV, {nkelastic, <<"es1">>, opts}).
+%%
 
 
 get_partitions_count(Topic) ->
-    nkkafka:get_partitions_count(?SRV, local, Topic).
-
-
-get_producer(Topic) ->
-    nkkafka:get_producer(?SRV, local, Topic, 0).
+    nkkafka:get_partitions_count(?SRV, k1, Topic).
 
 
 produce(Topic, Key, Val) ->
-    nkkafka:produce_sync(?SRV, local, Topic, 0, to_bin(Key), to_bin(Val)).
+    nkkafka:produce_sync(?SRV, k1, Topic, 0, to_bin(Key), to_bin(Val)).
+
+produce(Topic, Part, Key, Val) ->
+    nkkafka:produce_sync(?SRV, k1, Topic, Part, to_bin(Key), to_bin(Val)).
 
 produce2(Topic, Key, Val) ->
-    nkkafka:produce_sync(?SRV, local, Topic, 0, <<>>, [{nklib_util:m_timestamp(), to_bin(Key), to_bin(Val)}]).
-
-
-start_consumer(Topic) ->
-    nkkafka:start_consumer(?SRV, local, Topic).
-
-
-get_consumer(Topic) ->
-    nkkafka:get_consumer(?SRV, local, Topic, 0).
+    nkkafka:produce_sync(?SRV, k1, Topic, 0, <<>>, [{nklib_util:m_timestamp(), to_bin(Key), to_bin(Val)}]).
 
 
 subscribe(Topic) ->
-    nkkafka:subscribe(?SRV, local, whereis(?SRV), Topic, 0, #{}).
-
-
-
-
-
+    nkkafka:subscribe(?SRV, k1, self(), Topic, 0).
 
 
 
 get_metadata() ->
-    nkkafka_util:get_metadata(?SRV, local).
+    nkkafka_util:get_metadata(?SRV, k2).
 
 
 resolve_offset(Topic, Time) ->
-    nkkafka_util:resolve_offset(?SRV, local, Topic, 0, Time).
+    nkkafka_util:resolve_offset(?SRV, k2, Topic, 0, Time).
 
 
 fetch(Topic, Offset) ->
-    nkkafka_util:fetch(?SRV, local, Topic, 0, Offset).
+    nkkafka_util:fetch(?SRV, k2, Topic, 0, Offset).
 
 
 

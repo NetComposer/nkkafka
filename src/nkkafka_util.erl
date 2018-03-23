@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2017 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -22,6 +22,9 @@
 
 -module(nkkafka_util).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
+-export([do_produce/2, do_produce/3, do_produce_sync/2, do_produce_sync/3]).
+-export([do_consume_ack/2]).
+-export([do_subscribe/5, do_unsubscribe/2]).
 -export([send_callback_ack/1]).
 -export([get_metadata/2, get_metadata/3, resolve_offset/4, resolve_offset/5, fetch/5, fetch/8]).
 -export([process_messages/1]).
@@ -39,6 +42,86 @@
 %% ===================================================================
 %% API
 %% ===================================================================
+
+
+%% @equiv produce(Pid, 0, <<>>, Value)
+-spec do_produce(pid(), nkkafka:value()) ->
+    {ok, nkkafka:call_ref()} | {error, any()}.
+
+do_produce(Pid, Value) when is_pid(Pid) ->
+    do_produce(Pid, _Key = <<>>, Value).
+
+
+%% @doc Produce one message if Value is binary or iolist,
+%% or a message set if Value is a (nested) kv-list, in this case Key
+%% is discarded (only the keys in kv-list are sent to kafka).
+%% The pid should be a partition producer pid, NOT client pid.
+-spec do_produce(pid(), nkkafka:key(), nkkafka:value()) ->
+    {ok, nkkafka:call_ref()} | {error, any()}.
+
+do_produce(Pid, Key, Value) when is_pid(Pid)->
+    Value2 = case is_map(Value) of
+        true ->
+            nklib_json:encode(Value);
+        false ->
+            Value
+    end,
+    brod_producer:produce(Pid, Key, Value2).
+
+
+%% @equiv produce_sync(Pid, 0, <<>>, Value)
+-spec do_produce_sync(pid(), nkkafka:value()) ->
+    ok.
+
+do_produce_sync(Pid, Value) when is_pid(Pid) ->
+    do_produce_sync(Pid, _Key = <<>>, Value).
+
+
+%% @doc Sync version of produce/3
+%% This function will not return until a response is received from kafka,
+%% however if producer is started with required_acks set to 0, this function
+%% will return once the messages is buffered in the producer process.
+%% @end
+-spec do_produce_sync(pid(), nkkafka:key(), nkkafka:value()) ->
+    ok | {error, any()}.
+
+do_produce_sync(Pid, Key, Value) when is_pid(Pid) ->
+    case do_produce(Pid, Key, Value) of
+        {ok, CallRef} ->
+            %% Wait until the request is acked by kafka
+            brod:sync_produce_request(CallRef);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+
+%% @doc
+-spec do_consume_ack(pid(), nkkafka:offset()) ->
+    ok | {error, term()}.
+
+do_consume_ack(ConsumerPid, Offset) ->
+    brod:consume_ack(ConsumerPid, Offset).
+
+
+
+
+%% @doc
+-spec do_subscribe(pid(), pid(), nkkafka:topic(), nkkafka:partition(), nkkafka:consumer_config()) ->
+    {ok, pid()} | {error, term()}.
+
+do_subscribe(ConsumerPid, SubscriberPid, Topic, Partition, ConsumerConfig) ->
+    brod:subscribe(ConsumerPid, SubscriberPid, to_bin(Topic), Partition, maps:to_list(ConsumerConfig)).
+
+
+%% @doc
+-spec do_unsubscribe(pid(), pid()) ->
+    ok | {error, term()}.
+
+do_unsubscribe(ConsumerPid, SubscriberPid) ->
+    brod:unsubscribe(ConsumerPid, SubscriberPid).
+
+
+
 
 %% @doc Must be called from group subscribers callbacks
 -spec send_callback_ack(nkkafka:msg()) ->

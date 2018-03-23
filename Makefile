@@ -62,3 +62,17 @@ docs:
 shell:
 	$(REBAR) shell --config config/shell.config --name $(APP)@127.0.0.1 --setcookie nk --apps $(APP)
 
+remsh:
+	erl -name remsh@127.0.0.1 -setcookie nk -remsh $(APP)@127.0.0.1
+
+
+shell_a:
+	$(REBAR) shell --config config/shell.config --name a@127.0.0.2 --setcookie nk --apps $(APP)
+
+shell_b:
+	$(REBAR) shell --config config/shell.config --name b@127.0.0.3 --setcookie nk --apps $(APP)
+
+shell_c:
+	$(REBAR) shell --config config/shell.config --name c@127.0.0.4 --setcookie nk --apps $(APP)
+
+

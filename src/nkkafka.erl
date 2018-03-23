@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2017 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -18,14 +18,18 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc NkKAFKA application
+%% @doc NkKAFKA API
+%% After starting the plugin, you can start producing and subscribing to topics
+%% Default config will we taken from plugin's config
+%% Plugin also allows to create consumer groups (equivalent to start_link_group_subscriber)
 
 -module(nkkafka).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([start_producer/3, start_producer/4, get_producer/4]).
--export([produce/2, produce/3, produce/6, produce_sync/2, produce_sync/3, produce_sync/6]).
+-export([produce/6, produce_sync/6]).
 -export([start_consumer/3, start_consumer/4, get_consumer/4]).
--export([subscribe/5, subscribe/6, unsubscribe/2, unsubscribe/5, consume_ack/2, consume_ack/5]).
+-export([subscribe/5, subscribe/6, unsubscribe/5]).
+-export([consume_ack/5]).
 -export([get_partitions_count/3, find_client/2]).
 -export([start_link_topic_subscriber/9, topic_subscriber_stop/1, topic_subscriber_ack/3]).
 -export([start_link_group_subscriber/9, group_subscriber_stop/1, group_subscriber_ack/4]).
@@ -33,11 +37,15 @@
 
 -include_lib("brod/include/brod.hrl").
 
+-define(LLOG(Type, Txt, Args),lager:Type("NkKAFKA "++Txt, Args)).
+
+
 %% ===================================================================
 %% Types
 %% ===================================================================
 
--type client_id() :: binary().
+-type srv_id() :: srv_id().
+-type package_id() :: nkservice:package_id().
 -type topic() :: undefined | string() | binary().
 -type partition() :: pos_integer().
 -type key() :: iodata().
@@ -110,7 +118,7 @@
 
 -type msg() ::
     #{
-        srv_id => nkservice:id(),
+        srv_id => srv_id(),
         group_id => group_id(),
         topic => topic(),
         partition => partition(),
@@ -132,74 +140,53 @@
 %% @doc Starts the per-topic producer supervisor
 %% Then, gets the list of partitions for the topic and starts a supervisor
 %% for each partition
--spec start_producer(nkservice:id(), client_id(), topic()) ->
+%% It is called automatically by produce/6
+-spec start_producer(srv_id(), package_id(), topic()) ->
     ok | {error, term()}.
 
-start_producer(SrvId, ClientId, Topic) ->
-    start_producer(SrvId, ClientId, Topic, #{}).
+start_producer(SrvId, PackageId, Topic) ->
+    start_producer(SrvId, PackageId, Topic, #{}).
 
 
 %% @doc
--spec start_producer(nkservice:id(), client_id(), topic(), producer_config()) ->
+-spec start_producer(srv_id(), package_id(), topic(), producer_config()) ->
     ok | {error, term()}.
 
-start_producer(SrvId, ClientId, Topic, Config) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:start_producer(Pid, to_bin(Topic), maps:to_list(Config));
+start_producer(SrvId, PackageId, Topic, Config) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            Config2 = producer_config(SrvId, PackageId, Config),
+            brod:start_producer(BrodClient, to_bin(Topic), Config2);
         {error, Error} ->
             {error, Error}
     end.
 
 
 %% @doc
--spec get_partitions_count(nkservice:id(), client_id(), topic()) ->
+-spec get_partitions_count(srv_id(), package_id(), topic()) ->
     {ok, pos_integer()} | {error, term()}.
 
-get_partitions_count(SrvId, ClientId, Topic) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:get_partitions_count(Pid, to_bin(Topic));
+get_partitions_count(SrvId, PackageId, Topic) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            brod:get_partitions_count(BrodClient, to_bin(Topic));
         {error, Error} ->
             {error, Error}
     end.
 
 
 %% @doc
--spec get_producer(nkservice:id(), client_id(), topic(), partition()) ->
-    {ok, pid()} | {error, term()}.
+%% Really fast operation
+-spec get_producer(srv_id(), package_id(), topic(), partition()) ->
+    {ok, pid()} | {error, {producer_not_found, binary(), integer()}|term()}.
 
-get_producer(SrvId, ClientId, Topic, Partition) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:get_producer(Pid, to_bin(Topic), Partition);
+get_producer(SrvId, PackageId, Topic, Partition) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            brod:get_producer(BrodClient, to_bin(Topic), Partition);
         {error, Error} ->
             {error, Error}
     end.
-
-
-%% @equiv produce(Pid, 0, <<>>, Value)
--spec produce(pid(), value()) ->
-    {ok, call_ref()} | {error, any()}.
-
-produce(Pid, Value) ->
-    produce(Pid, _Key = <<>>, Value).
-
-%% @doc Produce one message if Value is binary or iolist,
-%% or a message set if Value is a (nested) kv-list, in this case Key
-%% is discarded (only the keys in kv-list are sent to kafka).
-%% The pid should be a partition producer pid, NOT client pid.
--spec produce(pid(), key(), value()) ->
-    {ok, call_ref()} | {error, any()}.
-
-produce(ProducerPid, Key, Value) ->
-    Value2 = case is_map(Value) of
-        true ->
-            nklib_json:encode(Value);
-        false ->
-            Value
-    end,
-    brod_producer:produce(ProducerPid, Key, Value2).
 
 
 %% @doc Produce one message if Value is binary or iolist,
@@ -209,67 +196,55 @@ produce(ProducerPid, Key, Value) ->
 %% This function first lookup the producer pid,
 %% then call produce/3 to do the real work.
 %% @end
--spec produce(nkservice:id(), client_id(), topic(), partition() | partition_fun(), key(), value()) ->
+-spec produce(srv_id(), package_id(), topic(), partition() | partition_fun(), key(), value()) ->
     {ok, call_ref()} | {error, any()}.
 
-produce(SrvId, ClientId, Topic, PartFun, Key, Value) when is_function(PartFun) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            case brod_client:get_partitions_count(Pid, Topic) of
+produce(SrvId, PackageId, Topic, PartFun, Key, Value) when is_function(PartFun) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            case brod_client:get_partitions_count(BrodClient, Topic) of
                 {ok, PartitionsCnt} ->
                     {ok, Partition} = PartFun(Topic, PartitionsCnt, Key, Value),
-                    produce(SrvId, ClientId, Topic, Partition, Key, Value);
+                    produce(SrvId, PackageId, Topic, Partition, Key, Value);
                 {error, Reason} ->
-                    {error, Reason}
+                    {error1, Reason}
             end;
         {error, Error} ->
             {error, Error}
     end;
 
-produce(SrvId, ClientId, Topic, Partition, Key, Value) when is_integer(Partition) ->
-    case get_producer(SrvId, ClientId, Topic, Partition) of
+produce(SrvId, PackageId, Topic, Partition, Key, Value) when is_integer(Partition) ->
+    case get_producer(SrvId, PackageId, Topic, Partition) of
         {ok, Pid} ->
-            produce(Pid, Key, Value);
+            nkkafka_util:do_produce(Pid, Key, Value);
+        {error, {producer_not_found, _}} ->
+            ?LLOG(notice, "auto starting producer ~s:~s:~s", [SrvId, PackageId, Topic]),
+            case start_producer(SrvId, PackageId, Topic) of
+                ok ->
+                    case get_producer(SrvId, PackageId, Topic, Partition) of
+                        {ok, Pid} ->
+                            nkkafka_util:do_produce(Pid, Key, Value);
+                        {error, Error} ->
+                            {error, Error}
+                    end;
+                {error, Error} ->
+                    {error, Error}
+            end;
         {error, Reason} ->
-            {error, Reason}
+            {error2, Reason}
     end.
 
-
-%% @equiv produce_sync(Pid, 0, <<>>, Value)
--spec produce_sync(pid(), value()) ->
-    ok.
-
-produce_sync(Pid, Value) ->
-    produce_sync(Pid, _Key = <<>>, Value).
-
-
-%% @doc Sync version of produce/3
-%% This function will not return until a response is received from kafka,
-%% however if producer is started with required_acks set to 0, this function
-%% will return once the messages is buffered in the producer process.
-%% @end
--spec produce_sync(pid(), key(), value()) ->
-    ok | {error, any()}.
-
-produce_sync(Pid, Key, Value) ->
-    case produce(Pid, Key, Value) of
-        {ok, CallRef} ->
-            %% Wait until the request is acked by kafka
-            brod:sync_produce_request(CallRef);
-        {error, Reason} ->
-            {error, Reason}
-    end.
 
 %% @doc Sync version of produce/5
 %% This function will not return until a response is received from kafka,
 %% however if producer is started with required_acks set to 0, this function
 %% will return once the messages are buffered in the producer process.
 %% @end
--spec produce_sync(nkservice:id(), client_id(), topic(), partition() | partition_fun(), key(), value()) ->
+-spec produce_sync(srv_id(), package_id(), topic(), partition() | partition_fun(), key(), value()) ->
     ok | {error, any()}.
 
-produce_sync(SrvId, ClientId, Topic, Partition, Key, Value) ->
-    case produce(SrvId, ClientId, Topic, Partition, Key, Value) of
+produce_sync(SrvId, PackageId, Topic, Partition, Key, Value) ->
+    case produce(SrvId, PackageId, Topic, Partition, Key, Value) of
         {ok, CallRef} ->
             brod:sync_produce_request(CallRef);
         {error, Reason} ->
@@ -287,58 +262,51 @@ produce_sync(SrvId, ClientId, Topic, Partition, Key, Value) ->
 %% @doc Starts the per-topic consumer supervisor
 %% Then, gets the list of partitions for the topic and starts a supervisor
 %% for each partition
--spec start_consumer(nkservice:id(), client_id(), topic()) ->
+-spec start_consumer(srv_id(), package_id(), topic()) ->
     ok | {error, term()}.
 
-start_consumer(SrvId, ClientId, Topic) ->
-    start_consumer(SrvId, ClientId, Topic, #{}).
+start_consumer(SrvId, PackageId, Topic) ->
+    start_consumer(SrvId, PackageId, Topic, #{}).
 
 
 %% @doc
--spec start_consumer(nkservice:id(), client_id(), topic(), consumer_config()) ->
+-spec start_consumer(srv_id(), package_id(), topic(), consumer_config()) ->
     ok | {error, term()}.
 
-start_consumer(SrvId, ClientId, Topic, Config) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:start_consumer(Pid, to_bin(Topic), maps:to_list(Config));
+start_consumer(SrvId, PackageId, Topic, Config) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            Config2 = consumer_config(SrvId, PackageId, Config),
+            brod:start_consumer(BrodClient, to_bin(Topic), Config2);
         {error, Error} ->
             {error, Error}
     end.
 
 
 %% @doc
--spec get_consumer(nkservice:id(), client_id(), topic(), partition()) ->
+-spec get_consumer(srv_id(), package_id(), topic(), partition()) ->
     {ok, pid()} | {error, term()}.
 
-get_consumer(SrvId, ClientId, Topic, Partition) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:get_producer(Pid, to_bin(Topic), Partition);
+get_consumer(SrvId, PackageId, Topic, Partition) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            brod:get_consumer(BrodClient, to_bin(Topic), Partition);
         {error, Error} ->
             {error, Error}
     end.
 
 
 %% @doc Tell consumer process to fetch more (if pre-fetch count allows).
--spec consume_ack(nkservice:id(), client_id(), topic(), partition(), offset()) ->
+-spec consume_ack(srv_id(), package_id(), topic(), partition(), offset()) ->
     ok | {error, term()}.
 
-consume_ack(SrvId, ClientId, Topic, Partition, Offset) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:consume_ack(Pid, to_bin(Topic), Partition, Offset);
+consume_ack(SrvId, PackageId, Topic, Partition, Offset) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            brod:consume_ack(BrodClient, to_bin(Topic), Partition, Offset);
         {error, Error} ->
             {error, Error}
     end.
-
-
-%% @doc
--spec consume_ack(pid(), offset()) ->
-    ok | {error, term()}.
-
-consume_ack(ConsumerPid, Offset) ->
-    brod:consume_ack(ConsumerPid, Offset).
 
 
 
@@ -350,55 +318,60 @@ consume_ack(ConsumerPid, Offset) ->
 
 
 %% @doc Simple, low-level subscription for a topic and partition
-%% It gets the consumer for the topic and partition
-%% If the consumer dies, the subscription is not restarted!
-%% The subscriber will receive messages like
+%% It adds a subscription to a consumer process
+%% Starts it if it is not yet started
+%% If the consumer dies, subscriptions will be lost
+%% The defined Pid will receive messages like
 %% {ConsumerPid, #kafka_message_set{}} and
 %% {ConsumerPid, #kafka_fetch_error{}} (MUST RESUBSCRIBE)
 %%
-%% ConsumerConfig is used to update Consumer's config
 %% @see brod_demo_cg_collector (reads data from __consumer_offsets) and
 %% brod_demo_topic_subscriber
 
--spec subscribe(nkservice:id(), client_id(), pid(), topic(), partition(), consumer_config()) ->
+-spec subscribe(srv_id(), package_id(), pid(), topic(), partition()) ->
     {ok, ConsumerPid::pid()} | {error, term()}.
 
-subscribe(SrvId, ClientId, SubscriberPid, Topic, Partition, ConsumerConfig) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:subscribe(Pid, SubscriberPid, to_bin(Topic), Partition, maps:to_list(ConsumerConfig));
+subscribe(SrvId, PackageId, Pid, Topic, Partition) ->
+    subscribe(SrvId, PackageId, Pid, Topic, Partition, #{}).
+
+%% @doc
+%% Performs an update of the consumer config
+-spec subscribe(srv_id(), package_id(), pid(), topic(), partition(), consumer_config()) ->
+    {ok, ConsumerPid::pid()} | {error, term()}.
+
+subscribe(SrvId, PackageId, Pid, Topic, Partition, Config) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            % Config2 is used to update the consumer's config
+            Config2 = consumer_config(SrvId, PackageId, Config),
+            case brod:subscribe(BrodClient, Pid, to_bin(Topic), Partition, Config2) of
+                {ok, ConsumerPid} ->
+                    {ok, ConsumerPid};
+                {error, {consumer_not_found, _}} ->
+                    ?LLOG(notice, "auto starting consumer ~s:~s:~s", [SrvId, PackageId, Topic]),
+                    case start_consumer(SrvId, PackageId, Topic) of
+                        ok ->
+                            brod:subscribe(BrodClient, Pid, to_bin(Topic), Partition, Config2);
+                        {error, Error} ->
+                            {error, Error}
+                    end
+            end;
         {error, Error} ->
             {error, Error}
     end.
 
 
 %% @doc
--spec subscribe(pid(), pid(), topic(), partition(), consumer_config()) ->
-    {ok, pid()} | {error, term()}.
+-spec unsubscribe(srv_id(), package_id(), topic(), partition(), pid()) ->
+    ok | {error, ignored|term()}.
 
-subscribe(ConsumerPid, SubscriberPid, Topic, Partition, ConsumerConfig) ->
-    brod:subscribe(ConsumerPid, SubscriberPid, to_bin(Topic), Partition, maps:to_list(ConsumerConfig)).
-
-
-%% @doc
--spec unsubscribe(nkservice:id(), client_id(), topic(), partition(), pid()) ->
-    {ok, pid()} | {error, term()}.
-
-unsubscribe(SrvId, ClientId, Topic, Partition, SubscriberPid) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod:unsubscribe(Pid, to_bin(Topic), Partition, SubscriberPid);
+unsubscribe(SrvId, PackageId, Topic, Partition, Pid) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            brod:unsubscribe(BrodClient, to_bin(Topic), Partition, Pid);
         {error, Error} ->
             {error, Error}
     end.
-
-
-%% @doc
--spec unsubscribe(pid(), pid()) ->
-    ok | {error, term()}.
-
-unsubscribe(ConsumerPid, SubscriberPid) ->
-    brod:unsubscribe(ConsumerPid, SubscriberPid).
 
 
 
@@ -416,15 +389,15 @@ unsubscribe(ConsumerPid, SubscriberPid) ->
 %% If the function replies {ok, State} instead of {ok, ack, State} it should call topic_subscriber_ack/3
 %% Client must restart the process if failed
 
--spec start_link_topic_subscriber(nkservice:id(), client_id(), topic(), all | [partition()],
+-spec start_link_topic_subscriber(srv_id(), package_id(), topic(), all | [partition()],
                                   consumer_config(), [{partition(), offset()}],
                                   message | message_set, brod_topic_subscriber:cb_fun(), term()) ->
      {ok, pid()} | {error, any()}.
 
-start_link_topic_subscriber(SrvId, ClientId, Topic, Partitions, ConsumerConfig, Offsets, MessageType, Fun, State) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
-            brod_topic_subscriber:start_link(Pid, to_bin(Topic), Partitions,
+start_link_topic_subscriber(SrvId, PackageId, Topic, Partitions, ConsumerConfig, Offsets, MessageType, Fun, State) ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
+            brod_topic_subscriber:start_link(BrodClient, to_bin(Topic), Partitions,
                                              maps:to_list(ConsumerConfig),
                                              MessageType, Offsets, Fun, State);
         {error, Error} ->
@@ -458,6 +431,9 @@ topic_subscriber_stop(Pid) ->
 %% Multiple nodes can start a group with the same name (even with different topics)
 %% and partitions will be assigned based on selected algorithm
 %% (roundrobin is the only one supported)
+%%
+%% They can be started directly from the plugin config
+%%
 %% ===============================================================================
 
 %% @doc Starts a high level subscription to a number of topics, all partitions
@@ -471,16 +447,16 @@ topic_subscriber_stop(Pid) ->
 %%
 %% You could also create the coordinator yourself and use brod_group_member behavior
 
--spec start_link_group_subscriber(nkservice:id(), client_id(), group_id(), [topic()], group_config(),
+-spec start_link_group_subscriber(srv_id(), package_id(), group_id(), [topic()], group_config(),
                                   consumer_config(), message | message_type, module(), term()) ->
     {ok, pid()} | {error, any()}.
 
-start_link_group_subscriber(SrvId, ClientId, GroupId, Topics, GroupConfig, ConsumerConfig,
+start_link_group_subscriber(SrvId, PackageId, GroupId, Topics, GroupConfig, ConsumerConfig,
                             MessageType, Mod, Args) ->
-    case find_client(SrvId, ClientId) of
-        {ok, Pid} ->
+    case find_client(SrvId, PackageId) of
+        {ok, BrodClient} ->
             Topics2 = [to_bin(Topic) || Topic <- Topics],
-            brod_group_subscriber:start_link(Pid, to_bin(GroupId), Topics2,
+            brod_group_subscriber:start_link(BrodClient, to_bin(GroupId), Topics2,
                                              maps:to_list(GroupConfig),
                                              maps:to_list(ConsumerConfig),
                                              MessageType, Mod, Args);
@@ -515,14 +491,28 @@ group_subscriber_stop(Pid) ->
 
 
 %% @private
-find_client(SrvId, ClientId) ->
-    Clients = SrvId:config_nkkafka(),
-    case maps:find(to_bin(ClientId), Clients) of
-        {ok, Name} ->
-            {ok, Name};
-        error ->
-            {error, client_not_found}
+%% Returns the registered name of the process
+find_client(SrvId, PackageId) ->
+    case
+        catch nkservice_util:get_cache(SrvId, {nkkafka, to_bin(PackageId), brod_client})
+    of
+        {'EXIT', _} ->
+            {error, client_not_found};
+        BrodClientId ->
+            {ok, BrodClientId}
     end.
+
+
+%% @private
+producer_config(SrvId, PackageId, Config) ->
+    Base = nkservice_util:get_cache(SrvId, {nkkafka, to_bin(PackageId), producer_config}),
+    maps:to_list(maps:merge(Base, Config)).
+
+
+%% @private
+consumer_config(SrvId, PackageId, Config) ->
+    Base = nkservice_util:get_cache(SrvId, {nkkafka, to_bin(PackageId), consumer_config}),
+    maps:to_list(maps:merge(Base, Config)).
 
 
 %% @private

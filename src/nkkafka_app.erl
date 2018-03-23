@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2017 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -59,6 +59,7 @@ start(_Type, _Args) ->
     case nklib_config:load_env(?APP, Syntax, Defaults) of
         {ok, _} ->
             {ok, Vsn} = application:get_key(?APP, vsn),
+            ok = nkservice_util:register_package(?PKG_KAFKA, nkkafka),
             lager:info("NkKAFKA v~s is starting", [Vsn]),
             {ok, Pid} = nkkafka_sup:start_link(),
             {ok, Pid};
