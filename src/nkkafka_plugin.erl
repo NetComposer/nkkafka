@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2019 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -18,112 +18,34 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc NkKAFKA callbacks
-
+%% @doc Default callbacks for plugin definitions
 -module(nkkafka_plugin).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([plugin_deps/0, plugin_api/1, plugin_config/3, plugin_start/4, plugin_update/5]).
--export([client_syntax_check/1]).
--export([syntax/0]).
+-export([plugin_deps/0, plugin_config/3, plugin_cache/3,
+         plugin_start/3, plugin_update/4, plugin_stop/3]).
 
 -include("nkkafka.hrl").
-
--define(LLOG(Type, Txt, Args),lager:Type("NkKAFKA "++Txt, Args)).
-
+-include_lib("nkserver/include/nkserver.hrl").
 
 %% ===================================================================
-%% Plugin callbacks
-%%
-%% These are used when NkKAFKA is started as a NkSERVICE plugin
+%% Default implementation
 %% ===================================================================
 
-%% @private
+
 plugin_deps() ->
-    [].
+	[nkserver].
 
 
 %% @doc
-plugin_api(?PKG_KAFKA) ->
-    #{
-        luerl => #{
-            produce => {nkkafka, luerl_produce}
-        }
-    };
-
-plugin_api(_Class) ->
-    #{}.
-
-
-%% @private
-plugin_config(?PKG_KAFKA, #{id:=Id, config:=Config}=Spec, #{id:=SrvId}) ->
-	Syntax = syntax(),
-    case nklib_syntax:parse(Config, Syntax) of
-        {ok, Parsed, _} ->
-            BrodClientId1 = nklib_util:bjoin([SrvId, "nkkafka", Id], $_),
-            BrodClientId2 = binary_to_atom(BrodClientId1, utf8),
-            CacheMap = #{
-                {nkkafka, Id, brod_client} => BrodClientId2,
-                {nkkafka, Id, consumer_config} => maps:get(consumerConfig, Parsed, #{}),
-                {nkkafka, Id, producer_config} => maps:get(producerConfig, Parsed, #{})
-            },
-            DebugMap = lists:foldl(
-                fun(DebugItem, Acc) -> Acc#{{nkkafka, Id, DebugItem} => true} end,
-                #{},
-                maps:get(debug, Parsed, [])),
-            Spec2 = Spec#{
-                config := Parsed#{brod_client_id=>BrodClientId2},
-                cache_map => CacheMap,
-                debug_map => DebugMap
-            },
-            {ok, Spec2};
-        {error, Error} ->
-            {error, Error}
-    end;
-
-plugin_config(_Class, _Package, _Service) ->
-    continue.
-
-
-
-%% @doc
-plugin_start(?PKG_KAFKA, #{id:=Id, config:=Config}, Pid, Service) ->
-    insert(Id, Config, Pid, Service);
-
-plugin_start(_Id, _Spec, _Pid, _Service) ->
-    continue.
-
-
-%% @doc
-%% Even if we are called only with modified config, we check if the spec is new
-plugin_update(?PKG_KAFKA, #{id:=Id, config:=NewConfig}, OldSpec, Pid, Service) ->
-    case OldSpec of
-        #{config:=NewConfig} ->
-            ok;
-        _ ->
-            insert(Id, NewConfig, Pid, Service)
-    end;
-
-plugin_update(_Class, _NewSpec, _OldSpec, _Pid, _Service) ->
-    ok.
-
-
-
-
-%% ===================================================================
-%% Util
-%% ===================================================================
-
-
-%% @private
-syntax() ->
-    #{
-        nodes => {list, #{
+plugin_config(SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
+    Syntax = #{
+        odes => {list, #{
             host => host,
             port => {integer, 1, 65535},
             '__defaults' => #{host=><<"127.0.0.1">>, port=>9092}
         }},
         %% @see nkkafka:client_config()
-        clientConfig => #{
+        client_config => #{
             restart_delay_seconds => integer,
             max_metadata_sock_retry => integer,
             get_metadata_timeout_seconds => integer,
@@ -137,7 +59,7 @@ syntax() ->
         },
         %% @see nkkafka:producer_config()
         %% It will be used by producers by default
-        producerConfig => #{
+        producer_config => #{
             required_acks => {integer, -1, 1},
             ack_timeout => integer,
             partition_buffer_limit => integer,
@@ -152,7 +74,7 @@ syntax() ->
         },
         %% @see nkkafka:consumer_config()
         %% It will be used by consumers (and subscribers?) by default
-        consumerConfig => #{
+        consumer_config => #{
             min_bytes => pos_integer,
             max_bytes => pos_integer,
             max_wait_time => pos_integer,
@@ -163,9 +85,9 @@ syntax() ->
             size_stat_window => integer
         },
         %% @see nkkafka:group_config()
-        consumerGroupId => binary,                % It will start if defined
-        consumerGroupTopics => {list, binary},
-        consumerGroupConfig => #{
+        consumer_group_id => binary,                % It will start if defined
+        consumer_group_topics => {list, binary},
+        consumer_group_config => #{
             partition_assignment_strategy => {atom, [roundrobin, callback_implemented]},
             session_timeout_seconds => integer,
             heartbeat_rate_seconds => integer,
@@ -179,60 +101,113 @@ syntax() ->
         debug => {list, {atom, [processor]}},
         '__mandatory' => [nodes],
         '__post_check' => fun ?MODULE:client_syntax_check/1
-    }.
+    },
+    case nkserver_util:parse_config(Config, Syntax) of
+        {ok, Config2, _} ->
+            BrodClientId1 = nklib_util:bjoin([SrvId, "nkkafka"], $_),
+            BrodClientId2 = binary_to_atom(BrodClientId1, utf8),
+            {ok, Config2#{brod_client_id => BrodClientId2}};
+        {error, Error} ->
+            lager:error("NKLOG Config ~p", [Config]),
+            {error, Error}
+    end.
+
+
+plugin_cache(_SrvId, Config, _Service) ->
+    Cache = #{
+        brod_client_id => maps:get(brod_client_id, Config),
+        consumer_config => maps:get(consumer_config, Config, #{}),
+        producer_config => maps:get(producer_config, Config, #{}),
+        debug => maps:get(debug, Config, [])
+    },
+    {ok, Cache}.
+
+
+%% @doc
+plugin_start(SrvId, Config, Service) ->
+    insert(SrvId, Config, Service).
+
+
+plugin_stop(SrvId, _Config, _Service) ->
+    nkserver_workers_sup:remove_all_childs(SrvId).
+
+
+%% @doc
+plugin_update(SrvId, NewConfig, OldConfig, Service) ->
+    case NewConfig of
+        OldConfig ->
+            ok;
+        _ ->
+            insert(SrvId, NewConfig, Service)
+    end.
+
+
+
+%% ===================================================================
+%% Internal
+%% ===================================================================
+
+
+client_syntax_check(Client) ->
+    case maps:from_list(Client) of
+        #{consumer_group_id:=_, consumer_group_topics:=_} ->
+            ok;
+        #{consumer_group_id:=_} ->
+            {error, {missing_field, <<"consumer_group_topics">>}};
+        _ ->
+            ok
+    end.
 
 
 %% @private
-insert(Id, Config, SupPid, #{id:=SrvId}) ->
-    #{brod_client_id:=BrodId, nodes:=Nodes1} = Config,
-    Nodes2 = [{nklib_util:to_list(Host), Port} || #{host:=Host, port:=Port} <- Nodes1],
+insert(SrvId, Config, Service) ->
+    #{brod_client_id:=BrodId, nodes:=Nodes} = Config,
+    Nodes2 = [
+        {nklib_util:to_list(Host), Port}
+        || #{host:=Host, port:=Port} <- Nodes
+    ],
     Childs1 = case Config of
-        #{consumerGroupId:=GroupId, consumerGroupTopics:=Topics} ->
-            ConsumerConfig = maps:to_list(maps:get(consumerConfig, Config, #{})),
-            GroupConfig = maps:to_list(maps:get(consumerGroupConfig, Config, #{})),
-            Args = [
-                BrodId, GroupId, Topics, GroupConfig, ConsumerConfig,
-                message_set, nkkafka_processor, {SrvId, Id, #{}}
+        #{consumer_group_id:=GroupId, consumer_group_topics:=Topics} ->
+            ConsumerConfig1 = maps:get(consumer_config, Config, #{}),
+            ConsumerConfig2 = maps:to_list(ConsumerConfig1),
+            GroupConfig1 = maps:get(consumer_group_config, Config, #{}),
+            GroupConfig2 = maps:to_list(GroupConfig1),
+            Args1 = [
+                BrodId, GroupId, Topics, GroupConfig2, ConsumerConfig2,
+                message_set, nkkafka_processor, {SrvId,  #{}}
             ],
             [
                 #{
                     id => {group, GroupId, BrodId},
-                    start => {brod_group_subscriber, start_link, Args}
+                    start => {brod_group_subscriber, start_link, Args1}
                 }
             ];
         _ ->
             []
     end,
-    ClientConfig = maps:to_list(maps:get(clientConfig, Config, #{})),
+    ClientConfig1 = maps:get(client_config, Config, #{}),
+    ClientConfig2 = maps:to_list(ClientConfig1),
+    Args2 = [Nodes2, BrodId, ClientConfig2],
     Childs2 =  [
         #{
             id => {client, BrodId},
-            start => {brod_client, start_link, [Nodes2, BrodId, ClientConfig]}
+            start => {brod_client, start_link, Args2}
         }
         | Childs1
     ],
-    case nkservice_packages_sup:update_child_multi(SupPid, Childs2, #{}) of
+    case nkserver_workers_sup:update_child_multi(SrvId, Childs2, #{}) of
         ok ->
-            ?LLOG(debug, "started ~s", [Id]),
-            ok;
-        not_updated ->
-            ?LLOG(debug, "didn't upgrade ~s", [Id]),
+            ?SRV_LOG(info, "servers started", [], Service),
             ok;
         upgraded ->
-            ?LLOG(info, "upgraded ~s", [Id]),
+            ?SRV_LOG(info, "servers upgraded", [], Service),
+            ok;
+        not_updated ->
+            ?SRV_LOG(debug, "servers didn't upgrade", [], Service),
             ok;
         {error, Error} ->
-            ?LLOG(notice, "start/update error ~s: ~p", [Id, Error]),
+            ?SRV_LOG(notice, "servers start/update error: ~p", [Error], Service),
             {error, Error}
     end.
 
 
-client_syntax_check(Client) ->
-    case maps:from_list(Client) of
-        #{consumerGroupId:=_, consumerGroupTopics:=_} ->
-            ok;
-        #{consumerGroupId:=_} ->
-            {error, {missing_field, <<"consumerGroupTopics">>}};
-        _ ->
-            ok
-    end.

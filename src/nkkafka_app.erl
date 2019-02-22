@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2019 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -18,50 +18,40 @@
 %%
 %% -------------------------------------------------------------------
 
-%% @doc NkKAFKA OTP Application Module
-
 -module(nkkafka_app).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -behaviour(application).
 
 -export([start/0, start/2, stop/1]).
 -export([get/1, get/2, put/2, del/1]).
--export([get_env/1, get_env/2, set_env/2]).
 
 -include("nkkafka.hrl").
--include_lib("nklib/include/nklib.hrl").
 
 -define(APP, nkkafka).
+-compile({no_auto_import, [get/1, put/2]}).
 
 %% ===================================================================
 %% Private
 %% ===================================================================
 
-%% @doc Starts stand alone.
+%% @doc Starts NkSERVER stand alone.
 -spec start() -> 
-    ok | {error, Reason::term()}.
+    list().
 
 start() ->
-    case nklib_util:ensure_all_started(?APP, permanent) of
-        {ok, _Started} ->
-            ok;
-        Error ->
-            Error
-    end.
+    application:ensure_all_started(?APP).
 
 
-%% @private OTP standard start callback
+%% @doc
 start(_Type, _Args) ->
     Syntax = #{
     },
-    Defaults = #{
-    },
-    case nklib_config:load_env(?APP, Syntax, Defaults) of
+    case nklib_config:load_env(?APP, Syntax) of
         {ok, _} ->
-            {ok, Vsn} = application:get_key(?APP, vsn),
-            ok = nkservice_util:register_package(?PKG_KAFKA, nkkafka),
-            lager:info("NkKAFKA v~s is starting", [Vsn]),
             {ok, Pid} = nkkafka_sup:start_link(),
+            {ok, Vsn} = application:get_key(nkserver, vsn),
+            lager:info("NkKAFKA v~s has started.", [Vsn]),
+            nkserver_util:register_package_class(?PACKAGE_CLASS_KAFKA, nkkafka),
             {ok, Pid};
         {error, Error} ->
             lager:error("Error parsing config: ~p", [Error]),
@@ -69,44 +59,27 @@ start(_Type, _Args) ->
     end.
 
 
+
 %% @private OTP standard stop callback
 stop(_) ->
     ok.
 
 
-%% Configuration access
+%% @doc gets a configuration value
 get(Key) ->
-    nklib_config:get(?APP, Key).
+    get(Key, undefined).
 
+
+%% @doc gets a configuration value
 get(Key, Default) ->
     nklib_config:get(?APP, Key, Default).
 
-put(Key, Val) ->
-    nklib_config:put(?APP, Key, Val).
 
+%% @doc updates a configuration value
+put(Key, Value) ->
+    nklib_config:put(?APP, Key, Value).
+
+
+%% @doc updates a configuration value
 del(Key) ->
     nklib_config:del(?APP, Key).
-
-
-
-%% @private
-get_env(Key) ->
-    get_env(Key, undefined).
-
-
-%% @private
-get_env(Key, Default) ->
-    case application:get_env(?APP, Key) of
-        undefined -> Default;
-        {ok, Value} -> Value
-    end.
-
-
-%% @private
-set_env(Key, Value) ->
-    application:set_env(?APP, Key, Value).
-
-
-
-
-

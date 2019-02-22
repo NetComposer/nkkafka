@@ -1,9 +1,9 @@
 {application, nkkafka, [
-    {description, "NkKAFKA Plugin"},
+    {description, "NkKAFKA Server"},
     {vsn, "develop"},
     {modules, []},
     {registered, []},
     {mod, {nkkafka_app, []}},
-    {applications, [nkservice, brod]},
+    {applications, [nkserver, brod]},
     {env, []}
 ]}.

@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2018 Carlos Gonzalez Florido.  All Rights Reserved.
+%% Copyright (c) 2019 Carlos Gonzalez Florido.  All Rights Reserved.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -47,7 +47,7 @@
 
 -include("nkkafka.hrl").
 -include_lib("brod/include/brod.hrl").
--include_lib("nkservice/include/nkservice.hrl").
+-include_lib("nkserver/include/nkserver.hrl").
 
 %% ===================================================================
 %% Types
@@ -278,8 +278,8 @@ init(ProcessorId) ->
         user = User2,
         debug = Debug == true
     },
-    State2 = start_luerl(State1),
-    {ok, State2}.
+    %State2 = start_luerl(State1),
+    {ok, State1}.
 
 
 %% @private
@@ -325,9 +325,9 @@ handle_call({process, Pid, Msg}, From, State) ->
                         User
                 end
             catch
-                error:CError ->
+                error:CError:Trace ->
                     ?LLOG(warning, "error calling kafka_processor_msg (~p): ~p (~p)",
-                        [Offset, CError, erlang:get_stacktrace()], Id),
+                        [Offset, CError, Trace], Id),
                     User
             end,
             State#state{offset=Offset, user=User2};
@@ -361,8 +361,8 @@ handle_cast(Msg, State) ->
 
 handle_info({'DOWN', _Ref, process, Pid, Reason}, #state{id=Id, luerl_pid=Pid}=State) ->
     ?LLOG(notice, "luerl instance down: ~p", [Reason], Id),
-    State2 = start_luerl(State),
-    {noreply, State2};
+    %State2 = start_luerl(State),
+    {noreply, State};
 
 handle_info(Info, State) ->
     lager:warning("Module ~p received unexpected info: ~p (~p)", [?MODULE, Info, State]),
@@ -398,20 +398,20 @@ send_ack(Id, Pid, Offset) ->
     ok.
 
 
-start_luerl(#state{id=#processor_id{srv_id=SrvId, package_id=PackageId}}=State) ->
-    case nkservice_util:get_callback(SrvId, ?PKG_KAFKA, PackageId, consumerGroupCallback) of
-        #{
-            class := luerl,
-            module_id := ModuleId
-        } = Spec ->
-            {ok, Pid} =
-                nkservice_luerl_instance:start(SrvId, ModuleId, make_ref(), #{monitor=>self()}),
-            ?DEBUG("started luerl instance: ~p", [Pid], State),
-            monitor(process, Pid),
-            State#state{luerl_pid=Pid, luerl_spec=Spec};
-        _ ->
-            State
-    end.
+%%start_luerl(#state{id=#processor_id{srv_id=SrvId, package_id=PackageId}}=State) ->
+%%    case nkservice_util:get_callback(SrvId, ?PKG_KAFKA, PackageId, consumerGroupCallback) of
+%%        #{
+%%            class := luerl,
+%%            module_id := ModuleId
+%%        } = Spec ->
+%%            {ok, Pid} =
+%%                nkservice_luerl_instance:start(SrvId, ModuleId, make_ref(), #{monitor=>self()}),
+%%            ?DEBUG("started luerl instance: ~p", [Pid], State),
+%%            monitor(process, Pid),
+%%            State#state{luerl_pid=Pid, luerl_spec=Spec};
+%%        _ ->
+%%            State
+%%    end.
 
 
 
