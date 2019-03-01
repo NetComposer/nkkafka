@@ -23,8 +23,9 @@
 -module(nkkafka_callbacks).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([kafka_processor_init/1, kafka_processor_msg/2]).
-
+-export([kafka_message/6]).
+-export([srv_master_init/2, srv_master_handle_call/4,
+         srv_master_handle_info/3, srv_master_timed_check/3]).
 
 
 %% ===================================================================
@@ -37,28 +38,39 @@
 %% Offered callbacks
 %% ===================================================================
 
-%% @doc Called when the processor for an specific set of service, package, group,
-%% topic and partition starts
--spec kafka_processor_init(nkkafka_processor:state()) ->
-    {ok, nkkafka_processor:state()}.
-
-kafka_processor_init(State) ->
-    {ok, State}.
-
-
 %% @doc Called when a new message is received in a processor
-%% This function is blocking the whole consumer group, so spawn it if
-%% it can be slow!
-%% However, The moment we replay the offset will be acknowledged
-%% (and not received again)
+%% This function is blocking for the partition
+-spec kafka_message(Topic::binary(), Partition::integer(), Key::binary(),
+                    Offset::integer(), TS::nklib_date:epoch(msecs), binary()) ->
+    ok.
 
--spec kafka_processor_msg(nkkafka_processor:msg(), nkkafka_processor:state()) ->
-    {ok, nkkafka_processor:state()} | continue.
-
-kafka_processor_msg(_Msg, _State) ->
-    % Will try luerl callback if available
-    continue.
+kafka_message(Topic, Partition, Key, Offset, TS, Value) ->
+    lager:warning("Unhandled Kafka message ~s:~p ~s (~p, ~p): ~p",
+                  [Topic, Partition, Key, Offset, TS, Value]),
+    ok.
 
 
 
+
+%% ===================================================================
+%% Implemented callbacks
+%% ===================================================================
+
+
+%% @doc
+srv_master_init(SrvId, State) ->
+    nkkafka_master:init(SrvId, State).
+
+
+srv_master_handle_call(Msg, From, SrvId, State) ->
+    nkkafka_master:handle_call(Msg, From, SrvId, State).
+
+
+srv_master_handle_info(Msg, SrvId, State) ->
+    nkkafka_master:handle_info(Msg, SrvId, State).
+
+
+%% @doc
+srv_master_timed_check(IsLeader, SrvId, State) ->
+    nkkafka_master:timed_check(IsLeader, SrvId, State).
 

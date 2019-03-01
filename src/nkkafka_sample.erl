@@ -26,7 +26,7 @@
 -compile(nowarn_export_all).
 
 -include_lib("nkserver/include/nkserver.hrl").
--define(SRV, kafka_test).
+-include_lib("nkserver/include/nkserver_module.hrl").
 
 %% ===================================================================
 %% Public
@@ -37,127 +37,93 @@
 %% @doc Starts the service
 start() ->
     Spec = #{
-        plugins => [?MODULE],
-        packages => [
-            #{
-                id => k1,
-                class => 'Kafka',
-                config => #{
-                    nodes => [#{host => <<"localhost">>}],
-                    clientConfig => #{
-                        restart_delay_seconds => 10
-                    },
-                    producerConfig => #{
-                        required_acks => -1
-                    }
-                }
-            },
-            #{
-                id => k2,
-                class => 'Kafka',
-                config => #{
-                    nodes => [#{host => <<"localhost">>}],
-                    consumerGroupId => my_group,
-                    consumerGroupTopics => "topic6",
-                    clientConfig => #{
-                        restart_delay_seconds => 11
-                    },
-                    consumerConfig => #{
-                        prefetch_count => 0
-                    },
-                    consumerGroupConfig => #{
-                        session_timeout_seconds => 12
-                    },
-                    debug => processor
-                }
-            }
-        ],
-        modules => [
-            #{
-                id => s1,
-                class => luerl,
-                code => s1(),
-                debug => true
-            }
-        ]
+        nodes => [#{host => <<"localhost">>}],
+%%        consumerGroupId => my_group,
+%%        consumerGroupTopics => "topic6",
+        client_config => #{
+            restart_delay_seconds => 11
+        },
+        consumerConfig => #{
+            prefetch_count => 0
+        },
+        consumer_group_config => #{
+            session_timeout_seconds => 12
+        },
+        process_topics => topic1,
+        offsets_topic => "__nkkafa_offsets",
+        debug => processor
     },
-    nkservice:start(?SRV, Spec).
+    nkserver:start_link(<<"Kafka">>, ?MODULE, Spec).
 
 
 %% @doc Stops the service
 stop() ->
-    nkservice:stop(?SRV).
-
-
-produce(Key, Val) ->
-    nkservice_luerl_instance:call({?SRV, s1, main}, [produce], [topic6, Key, Val]).
-
-
-s1() -> <<"
-    messageCB = function(msg, info)
-        log.info('LUERL Incoming Message: ' .. json.encodePretty(msg) .. ' info: ' .. json.encodePretty(info))
-    end
-
-    kafkaConfig = {
-        nodes = { {host = 'localhost'} },
-        consumerGroupId = 'my_group_2',
-        consumerGroupTopics = 'topic6',
-        clientConfig = { restart_delay_seconds = 13 },
-        consumerConfig = { prefetch_count = 5 },
-        consumerGroupConfig = { session_timeout_seconds = 15 },
-        debug = 'processor',
-
-        consumerGroupCallback = messageCB
-    }
-
-    kafka = startPackage('Kafka', kafkaConfig)
-
-    function produce(topic, key, val)
-        return kafka.produce(topic, key, val)
-    end
-
-">>.
-
-
-opts() ->
-    nkservice_util:get_cache(?SRV, {nkelastic, <<"es1">>, opts}).
+    nkserver:stop(?MODULE).
 
 
 
 get_partitions_count(Topic) ->
-    nkkafka:get_partitions_count(?SRV, k1, Topic).
+    nkkafka:get_partitions_count(?MODULE, Topic).
 
 
 produce(Topic, Key, Val) ->
-    nkkafka:produce_sync(?SRV, k1, Topic, 0, to_bin(Key), to_bin(Val)).
+    nkkafka:produce_sync(?MODULE, Topic, 0, to_bin(Key), to_bin(Val)).
 
 produce(Topic, Part, Key, Val) ->
-    nkkafka:produce_sync(?SRV, k1, Topic, Part, to_bin(Key), to_bin(Val)).
+    nkkafka:produce_sync(?MODULE, Topic, Part, to_bin(Key), to_bin(Val)).
 
 produce2(Topic, Key, Val) ->
-    nkkafka:produce_sync(?SRV, k1, Topic, 0, <<>>, [{nklib_util:m_timestamp(), to_bin(Key), to_bin(Val)}]).
+    nkkafka:produce_sync(?MODULE, Topic, 0, <<>>, [{nklib_util:m_timestamp(), to_bin(Key), to_bin(Val)}]).
 
 
 subscribe(Topic) ->
-    nkkafka:subscribe(?SRV, k1, self(), Topic, 0).
+    nkkafka:subscribe(?MODULE, self(), Topic, 0).
 
 
 
 get_metadata() ->
-    nkkafka_util:get_metadata(?SRV, k2).
+    nkkafka_util:get_metadata(?MODULE).
 
 
 resolve_offset(Topic, Time) ->
-    nkkafka_util:resolve_offset(?SRV, k2, Topic, 0, Time).
+    nkkafka_util:resolve_offset(?MODULE, Topic, 0, Time).
 
 
 fetch(Topic, Offset) ->
-    nkkafka_util:fetch(?SRV, k2, Topic, 0, Offset).
+    nkkafka_util:fetch(?MODULE, Topic, 0, Offset).
 
 
 
 
 
+%%produce(Key, Val) ->
+%%    nkservice_luerl_instance:call({?MODULE, s1, main}, [produce], [topic6, Key, Val]).
+%%
+%%
+%%s1() -> <<"
+%%    messageCB = function(msg, info)
+%%        log.info('LUERL Incoming Message: ' .. json.encodePretty(msg) .. ' info: ' .. json.encodePretty(info))
+%%    end
+%%
+%%    kafkaConfig = {
+%%        nodes = { {host = 'localhost'} },
+%%        consumerGroupId = 'my_group_2',
+%%        consumerGroupTopics = 'topic6',
+%%        clientConfig = { restart_delay_seconds = 13 },
+%%        consumerConfig = { prefetch_count = 5 },
+%%        consumerGroupConfig = { session_timeout_seconds = 15 },
+%%        debug = 'processor',
+%%
+%%        consumerGroupCallback = messageCB
+%%    }
+%%
+%%    kafka = startPackage('Kafka', kafkaConfig)
+%%
+%%    function produce(topic, key, val)
+%%        return kafka.produce(topic, key, val)
+%%    end
+%%
+%%">>.
 
 
 

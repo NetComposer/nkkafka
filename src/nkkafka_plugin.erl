@@ -39,12 +39,14 @@ plugin_deps() ->
 %% @doc
 plugin_config(SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
     Syntax = #{
-        odes => {list, #{
+        nodes => {list, #{
             host => host,
             port => {integer, 1, 65535},
             '__defaults' => #{host=><<"127.0.0.1">>, port=>9092}
         }},
         %% @see nkkafka:client_config()
+        process_topics => {list, binary},
+        offsets_topic => binary,
         client_config => #{
             restart_delay_seconds => integer,
             max_metadata_sock_retry => integer,
@@ -100,10 +102,10 @@ plugin_config(SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
         },
         debug => {list, {atom, [processor]}},
         '__mandatory' => [nodes],
-        '__post_check' => fun ?MODULE:client_syntax_check/1
+        '__post_check' => fun client_syntax_check/1
     },
     case nkserver_util:parse_config(Config, Syntax) of
-        {ok, Config2, _} ->
+        {ok, Config2} ->
             BrodClientId1 = nklib_util:bjoin([SrvId, "nkkafka"], $_),
             BrodClientId2 = binary_to_atom(BrodClientId1, utf8),
             {ok, Config2#{brod_client_id => BrodClientId2}};
@@ -116,6 +118,8 @@ plugin_config(SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
 plugin_cache(_SrvId, Config, _Service) ->
     Cache = #{
         brod_client_id => maps:get(brod_client_id, Config),
+        process_topics => maps:get(process_topics, Config, []),
+        offsets_topic => maps:get(offsets_topic, Config, undefined),
         consumer_config => maps:get(consumer_config, Config, #{}),
         producer_config => maps:get(producer_config, Config, #{}),
         debug => maps:get(debug, Config, [])
