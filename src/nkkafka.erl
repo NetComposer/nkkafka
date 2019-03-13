@@ -194,8 +194,12 @@ get_producer(SrvId, Topic, Partition) ->
 %% This function first lookup the producer pid,
 %% then call produce/3 to do the real work.
 %% @end
--spec produce(srv_id(), topic(), partition() | partition_fun(), key(), value()) ->
+-spec produce(srv_id(), topic(), partition() | partition_fun() | random, key(), value()) ->
     {ok, call_ref()} | {error, any()}.
+
+
+produce(SrvId, Topic, random, Key, Value) ->
+    produce(SrvId, Topic, fun random_partition/4, Key, Value);
 
 produce(SrvId, Topic, PartFun, Key, Value) when is_function(PartFun) ->
     case find_client(SrvId) of
@@ -509,6 +513,11 @@ producer_config(SrvId, Config) ->
 consumer_config(SrvId, Config) ->
     Base = nkserver:get_cached_config(SrvId, nkkafka, consumer_config),
     maps:to_list(maps:merge(Base, Config)).
+
+
+%% @private
+random_partition(_Topic, Partitions, _Key, _Value) ->
+    {ok, nklib_util:rand(0, Partitions-1)}.
 
 
 %% @private
