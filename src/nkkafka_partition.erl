@@ -257,9 +257,19 @@ process_messages([Msg|Rest], State) ->
         offsets_key = OffsetsKey,
         offsets_pid = Pid
     } = State,
-    ok = ?CALL_SRV(SrvId, kafka_message, [Topic, Part, Key, Offset, TS, Value]),
-    case is_pid(Pid) of
-        true ->
+    Fun = fun() ->?CALL_SRV(SrvId, kafka_message, [Topic, Part, Key, Offset, TS, Value]) end,
+    Result = case nklib_util:do_try(Fun) of
+        ok ->
+            ok;
+        {exception, {Class, {Error, Trace}}} ->
+            ?LLOG(warning, "error calling kafka message: ~p:~p (~p)", [Class, Error, Trace], State),
+            ok;
+        Other ->
+            ?LLOG(warning, "invalid response from kafka message: ~p", [Other], State),
+            ok
+    end,
+    case Result of
+        ok when is_pid(Pid) ->
             ok = nkkafka_util:produce_sync(Pid, OffsetsKey, nklib_util:to_binary(Offset));
         false ->
             ok
