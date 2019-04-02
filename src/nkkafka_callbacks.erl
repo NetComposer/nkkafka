@@ -23,7 +23,8 @@
 -module(nkkafka_callbacks).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 
--export([kafka_message/6]).
+-export([kafka_message/3]).
+-export([srv_timed_check/2, srv_handle_call/4]).
 -export([srv_master_init/2, srv_master_handle_call/4,
          srv_master_handle_info/3, srv_master_timed_check/3]).
 
@@ -32,7 +33,13 @@
 %% Types
 %% ===================================================================
 
-
+-type meta() ::
+    #{
+        partition => integer(),
+        key => binary,
+        offset => integer(),
+        ts => nklib_date:epoch(msecs)
+    }.
 
 %% ===================================================================
 %% Offered callbacks
@@ -40,13 +47,11 @@
 
 %% @doc Called when a new message is received in a processor
 %% This function is blocking for the partition
--spec kafka_message(Topic::binary(), Partition::integer(), Key::binary(),
-                    Offset::integer(), TS::nklib_date:epoch(msecs), binary()) ->
+-spec kafka_message(Topic::binary(), binary, meta()) ->
     ok.
 
-kafka_message(Topic, Partition, Key, Offset, TS, Value) ->
-    lager:warning("Unhandled Kafka message ~s:~p ~s (~p, ~p): ~p",
-                  [Topic, Partition, Key, Offset, TS, Value]),
+kafka_message(Topic, _Value, _Meta) ->
+    lager:warning("Unhandled Kafka message ~s", [Topic]),
     ok.
 
 
@@ -55,6 +60,26 @@ kafka_message(Topic, Partition, Key, Offset, TS, Value) ->
 %% ===================================================================
 %% Implemented callbacks
 %% ===================================================================
+
+
+
+srv_timed_check(#{id:=_SrvId}, State) ->
+%%    case nkkafka_util2:get_metadata(SrvId) of
+%%        {ok, Brokers, Topics} ->
+%%            lager:error("NKLOG TIMED CHECK ~p ~p", [Brokers, Topics]);
+%%        {error, Error} ->
+%%            lager:error("Error getting metadata: ~p", [Error])
+%%    end,
+    {ok, State}.
+
+srv_handle_call({nkkafka_start_subscriber, Topic, Part, Config, LeaderPid}, _From, #{id:=SrvId}, State) ->
+    Reply = nkkafka_subscriber:start(SrvId, Topic, Part, Config, LeaderPid),
+    {reply, Reply, State};
+
+srv_handle_call(_Msg, _From, _Service, _State) ->
+    continue.
+
+
 
 
 %% @doc

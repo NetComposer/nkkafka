@@ -34,7 +34,24 @@
     {ok, pid()}.
 
 start_link() ->
-    Childs = [],
+    Childs = [
+        #{
+            id => brokers,
+            start => {nkkafka_brokers, start_link, []},
+            restart => permanent,
+            shutdown => 5000,
+            type => worker,
+            modules => [nkkafka_brokers]
+        },
+        #{
+            id => producers,
+            start => {nkkafka_producers, start_link, []},
+            restart => permanent,
+            shutdown => 5000,
+            type => worker,
+            modules => [nkkafka_producers]
+        }
+    ],
     supervisor:start_link({local, ?MODULE}, ?MODULE, {{one_for_one, 10, 60}, Childs}).
 
 

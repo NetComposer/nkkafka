@@ -4,6 +4,6 @@
     {modules, []},
     {registered, []},
     {mod, {nkkafka_app, []}},
-    {applications, [nkserver, brod]},
+    {applications, [nkserver]},
     {env, []}
 ]}.
