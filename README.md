@@ -9,6 +9,8 @@ You can send and read individual messages with the utilities in [nkkafka](src/nk
 
 To send messages, use a [producer](src/nkkafka_producers.erl). Producers are started and stopped automatically.
 
+Thanks to project [ekafka](https://github.com/youlu-cn/ekafka) for the low level encoder and decoder for kafka protocol. 
+
 
 
 
