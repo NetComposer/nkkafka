@@ -123,6 +123,8 @@ connect(SrvId, BrokerId, Ip, Port, ConnId) ->
         class => {nkkafka_client, SrvId},
         monitor => SrvPid,
         tcp_packet => 4,
+        send_timeout => ?TIMEOUT,
+        send_timeout_close => true,
         idle_timeout => ?TIMEOUT,
         user_state => #{srv=>SrvId, broker=>BrokerId, id=>ConnId}
     },
