@@ -62,3 +62,9 @@ docs:
 
 shell:
 	ERL_AFLAGS=$(AFLAGS) $(REBAR) shell --config config/shell.config --name $(APP)@127.0.0.1 --setcookie nk --apps $(APP)
+
+remsh:
+	erl -name remsh@127.0.0.1 -setcookie nk -remsh $(APP)@127.0.0.1
+
+
+
