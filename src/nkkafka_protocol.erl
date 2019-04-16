@@ -180,7 +180,12 @@ start_link(SrvId, BrokerId, ConnId) ->
     {ok, term()} | {error, process_not_found|term()}.
 
 send_request(Pid, Request) when is_tuple(Request) ->
-    nklib_util:call2(Pid, {nkkafka_send_req, Request}, ?SYNC_CALL_TIMEOUT).
+    case nklib_util:call2(Pid, {nkkafka_send_req, Request}, ?SYNC_CALL_TIMEOUT) of
+        process_not_found ->
+            {error, process_not_found};
+        Other ->
+            Other
+    end.
 
 
 %% @doc
@@ -277,7 +282,7 @@ conn_init(NkPort) ->
     set_debug(State),
     Idle = maps:get(idle_timeout, Opts),
     self() ! do_heartbeat,
-    ?LLOG(info, "new connection (~p) (~s) (idle:~p)", [self(), Remote, Idle], State),
+    ?LLOG(debug, "new connection (~p) (~s) (idle:~p)", [self(), Remote, Idle], State),
     {ok, State}.
 
 

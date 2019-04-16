@@ -79,7 +79,6 @@ update_metadata(_SrvId, [{error, Error}|_], _Req) ->
 update_metadata(SrvId, [#{host:=Host, port:=Port}|Rest], Req) ->
     case nkpacket_dns:ips(Host) of
         [Ip|_] ->
-            ConnId = {metadata, nklib_date:epoch(usecs)},
             case nkkafka_protocol:connect(SrvId, 0, Ip, Port, {exclusive, metadata}) of
                 {ok, Pid} ->
                     case nkkafka_protocol:send_request(Pid, Req) of

@@ -81,7 +81,7 @@ do_call(Id, Msg, Tries) when Tries > 0 ->
     case get_connection(Id) of
         {ok, Pid} when is_pid(Pid) ->
             case do_call(Pid, Msg) of
-                process_not_found when Tries > 1 ->
+                {error, process_not_found} when Tries > 1 ->
                     lager:notice("NkKAFKA Protocol failed, retrying"),
                     timer:sleep(100),
                     do_call(Id, Msg, Tries-1);
