@@ -92,7 +92,7 @@ connect({SrvId, BrokerId, ConnId}) when is_atom(SrvId), is_integer(BrokerId) ->
         modules => [?MODULE]
     },
     case nkserver_workers_sup:update_child2(SrvId, Spec, #{}) of
-        {_, Pid} when is_pid(Pid) ->
+        {ok, _, Pid} when is_pid(Pid) ->
             {ok, Pid};
         {error, Error} ->
             {error, Error}

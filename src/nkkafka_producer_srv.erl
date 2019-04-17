@@ -92,7 +92,7 @@ start(SrvId, Topic) ->
         modules => [nkkafa_producer_srv]
     },
     case nkserver_workers_sup:update_child2(SrvId, Spec, #{}) of
-        {_, Pid} when is_pid(Pid) ->
+        {ok, _, Pid} ->
             {ok, Pid};
         {error, Error} ->
             {error, Error}
