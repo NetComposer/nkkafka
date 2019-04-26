@@ -258,19 +258,21 @@ do_get_topic_leaders(SrvId, Topic, Tries) when Tries > 0 ->
             {ok, Leaders};
         undefined ->
             case nkkafka_util:update_metadata(SrvId, Topic2) of
-                {ok, {_, #{Topic2:=#{error:=_Error}}}} ->
+                {ok, {_, #{Topic2:=#{error:=Error}}}} ->
+                    lager:notice("error getting topic ~s (~p): retrying", [Topic2, Error]),
                     timer:sleep(500),
                     do_get_topic_leaders(SrvId, Topic2, Tries-1);
                 {ok, {_, #{Topic2:=#{partitions:=_}}}} ->
                     do_get_topic_leaders(SrvId, Topic2, Tries-1);
-                {error, Error} when Tries < 1 ->
-                    {error, Error};
                 {error, Error} ->
                     ?LLOG(notice, "error getting topic ~s (~p): retrying", [Topic2, Error]),
                     timer:sleep(500),
                     do_get_topic_leaders(SrvId, Topic2, Tries-1)
             end
-    end.
+    end;
+
+do_get_topic_leaders(_SrvId, _Topic, _Tries) ->
+    {error, {topic_leaders_error, _Topic}}.
 
 
 
