@@ -19,7 +19,7 @@
 %% -------------------------------------------------------------------
 
 %% Reads at 100.000/s with 400byte payload an 8 partitions, saturates 1GB!
-%% If store_offsets is activated for each messagem it drops to 5.000/s
+%% If store_offsets is activated for each message it drops to 5.000/s
 
 -module(nkkafka_subscriber).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
@@ -356,8 +356,8 @@ process_messages([{Offset, Key, Value}|Rest], State) ->
     % Time is msecs
     #state{srv=SrvId, topic=Topic, partition=Part} = State,
     State2 = State#state{next_offset = Offset+1},
-    Meta = #{partition=>Part, key=>Key, offset=>Offset},
-    Fun = fun() ->?CALL_SRV(SrvId, kafka_message, [Topic, Value, Meta]) end,
+    Meta = #{topic=>Topic, partition=>Part, key=>Key, offset=>Offset},
+    Fun = fun() -> ?CALL_SRV(SrvId, kafka_message, [Topic, Value, Meta]) end,
     case nklib_util:do_try(Fun) of
         ok ->
             process_messages(Rest, State2);
