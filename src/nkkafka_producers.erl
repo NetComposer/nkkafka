@@ -39,6 +39,8 @@
 %% ===================================================================
 
 %% @doc Starts producer and insert message
+%% If key is <<>>, a random partition will be selected
+%% For any other, same partition will be use for same key
 produce(SrvId, Topic, Key, Msg) ->
     do_call(SrvId, to_bin(Topic), {insert, to_bin(Key), to_bin(Msg)}).
 

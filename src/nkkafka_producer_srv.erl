@@ -82,7 +82,7 @@ find(SrvId, Topic) ->
 
 %% @doc
 start(SrvId, Topic) ->
-    lager:notice("NkKAFKA starting producer ~s (~s)", [Topic, SrvId]),
+    lager:info("NkKAFKA starting producer ~s (~s)", [Topic, SrvId]),
     Spec = #{
         id => {producer, Topic},
         start => {nkkafka_producer_srv, start_link, [SrvId, Topic]},
@@ -183,7 +183,7 @@ handle_info(do_send, State) ->
     {noreply, State2};
 
 handle_info(insert_timeout, State) ->
-    ?LLOG(notice, "producer timeout", [], State),
+    ?LLOG(info, "producer timeout", [], State),
     {stop, normal, State};
 
 handle_info({'DOWN', _Ref, process, Pid, Reason}, #state{brokers=Brokers}=State) ->
@@ -256,7 +256,13 @@ insert(Key, Msg, State) ->
         messages = Msgs,
         sizes = Sizes
     } = State,
-    Part = nklib_date:epoch(usecs) rem NumParts,
+    Part = case Key of
+        <<>> ->
+            nklib_date:epoch(usecs) rem NumParts;
+        _ ->
+            erlang:phash2(Key) rem NumParts
+    end,
+    %lager:error("NKLOG KEY ~p PART: ~p", [Key, Part]),
     PartMsgs1 = maps:get(Part, Msgs, []),
     Msg2 = #req_message{key=Key, value=Msg},
     PartMsgs2 = [Msg2|PartMsgs1],
@@ -342,11 +348,11 @@ do_send_partition(Pid, Partition, Msgs, State) ->
             {error, Error, State};
         {ok, #{Topic:=#{Partition:=#{offset:=Offset}}}} ->
             Time = nklib_date:epoch(msecs) - Start,
-            ?LLOG(info, "sent ~p messages in ~pmsecs, partition ~p, offset ~p",
+            ?LLOG(debug, "sent ~p messages in ~pmsecs, partition ~p, offset ~p",
                 [length(Msgs), Time, Partition, Offset], State),
             {ok, Offset, State};
         {ok, no_ack} ->
-            ?LLOG(info, "sent ~p messages, partition ~p",
+            ?LLOG(debug, "sent ~p messages, partition ~p",
                 [length(Msgs), Partition], State),
             {ok, unknown, State};
         {error, Error} ->
