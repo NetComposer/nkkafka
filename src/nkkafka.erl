@@ -24,6 +24,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([get_metadata/1, get_partitions/2, get_offset/4]).
 -export([produce/5, fetch/5, get_leader/3, get_topic_leaders/2]).
+-export([pause_subscribers/2, subscribers_paused/1]).
 
 -include("nkkafka.hrl").
 %-include_lib("nkpacket/include/nkpacket.hrl").

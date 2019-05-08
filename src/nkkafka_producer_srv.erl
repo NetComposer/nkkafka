@@ -31,6 +31,15 @@
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2]).
 
+-define(DEBUG(Txt, Args, State),
+    case State#state.debug of
+        true ->
+            ?LLOG(debug, Txt, Args, State);
+        false ->
+            ok
+    end).
+
+
 -define(LLOG(Type, Txt, Args, State),
     lager:Type("NkKAFKA Producer (~s:~s) "++Txt,
         [State#state.srv, State#state.topic | Args])).
@@ -115,7 +124,8 @@ start(SrvId, Topic) ->
     messages :: map(),
     sizes :: map(),
     offsets :: map(),
-    timer :: reference() | undefined
+    timer :: reference() | undefined,
+    debug :: boolean()
 }).
 
 
@@ -127,6 +137,7 @@ init([SrvId, Topic, Leaders]) ->
         ack = nkserver:get_cached_config(SrvId, nkkafka, producer_ack),
         timeout = nkserver:get_cached_config(SrvId, nkkafka, producer_timeout)
     },
+    Debug = lists:member(producer, nkserver:get_cached_config(SrvId, nkkafka, debug)),
     State = #state{
         srv = SrvId,
         topic = Topic,
@@ -137,7 +148,8 @@ init([SrvId, Topic, Leaders]) ->
         max_size = nkserver:get_cached_config(SrvId, nkkafka, producer_queue_size),
         messages = #{},
         sizes = #{},
-        offsets = #{}
+        offsets = #{},
+        debug = Debug
     },
     self() ! do_send,
     {ok, reset_timeout(State)}.

@@ -411,7 +411,6 @@ send_request(Request, From, NkPort, #state{tid=TId}=State) ->
 
 
 set_debug(#state{srv = SrvId}=State) ->
-    Debug = nkserver:get_cached_config(SrvId, nkkafka_client, debug),
-    Protocol = is_list(Debug) andalso lists:member(protocol, Debug),
-    put(nkkafka_protocol, Protocol),
+    Debug = lists:member(protocol, nkserver:get_cached_config(SrvId, nkkafka, debug)),
+    put(nkkafka_protocol, Debug),
     ?DEBUG("debug system activated", [], State).

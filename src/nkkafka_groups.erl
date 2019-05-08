@@ -19,6 +19,7 @@
 %% -------------------------------------------------------------------
 
 %% @doc
+%% Not finished or operational
 
 -module(nkkafka_groups).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
@@ -58,7 +59,7 @@
     #{group() => protocol()} | {error, term()}.
 
 list_groups(SrvId) ->
-    case nkkafka_brokers:send_request(SrvId, #req_list_groups{}) of
+    case nkkafka_broker:send_request(SrvId, #req_list_groups{}) of
         {ok, #{error:=Error}} ->
             {error, {kafka_error, Error}};
         {ok, #{groups:=Groups}} ->
@@ -75,7 +76,7 @@ list_groups(SrvId) ->
 describe_group(SrvId, Group) ->
     Group2 = to_bin(Group),
     Req = #req_describe_groups{groups = [Group2]},
-    case nkkafka_brokers:send_request(SrvId, Req) of
+    case nkkafka_broker:send_request(SrvId, Req) of
         {ok, #{Group2:=#{error:=Error}}} ->
             {error, {kafka_error, Error}};
         {ok, #{Group2:=GroupData}} ->
@@ -91,7 +92,7 @@ describe_group(SrvId, Group) ->
 
 get_group_coordinator(SrvId, Group) ->
     Req = #req_group_coordinator{group=to_bin(Group)},
-    case nkkafka_brokers:send_request(SrvId, Req) of
+    case nkkafka_broker:send_request(SrvId, Req) of
         {ok, #{error:=Error}} ->
             {error, {kafka_error, Error}};
         {ok, Data} ->
@@ -117,7 +118,7 @@ join_group(SrvId, Group, Opts) ->
             }
         ]
     },
-    nkkafka_brokers:send_request(SrvId, Req).
+    nkkafka_broker:send_request(SrvId, Req).
 
 
 -spec leave_group(nkserver:id(), group(), member()) -> ok.
@@ -127,7 +128,7 @@ leave_group(SrvId, Group, Member) ->
         group = to_bin(Group),
         member = to_bin(Member)
     },
-    case nkkafka_brokers:send_request(SrvId, Req) of
+    case nkkafka_broker:send_request(SrvId, Req) of
         {ok, #{error:=Error}} ->
             {error, {kafka_error, Error}};
         {ok, _} ->
@@ -163,7 +164,7 @@ offset_fetch(SrvId, Group, Topic, Partition) ->
             }
         ]
     },
-    case nkkafka_brokers:send_request(SrvId, Req) of
+    case nkkafka_broker:send_request(SrvId, Req) of
         {ok, #{topics:=[#{partitions:=[#{metadata:=Meta, offset:=Offset}]}]}} ->
             {ok, Meta, Offset};
         Other ->
@@ -187,7 +188,7 @@ offset_commit(SrvId, Group, Topic, Partition, Offset, Meta) ->
             }
         ]
     },
-    case nkkafka_brokers:send_request(SrvId, Req) of
+    case nkkafka_broker:send_request(SrvId, Req) of
         {ok, #{topics:=[#{partitions:=[#{id:=Partition}]}]}} ->
             ok;
         Other ->

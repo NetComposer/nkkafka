@@ -30,6 +30,16 @@
          handle_cast/2, handle_info/2]).
 -import(nklib_util, [to_binary/1]).
 
+
+
+-define(DEBUG(Txt, Args, State),
+    case State#state.debug of
+        true ->
+            ?LLOG(debug, Txt, Args, State);
+        false ->
+            ok
+    end).
+
 -define(LLOG(Type, Txt, Args, State),
     lager:Type("NkKAFKA Subscriber (~s:~s:~p) "++Txt,
         [State#state.srv, State#state.topic, State#state.partition | Args])).
@@ -108,7 +118,8 @@ make_name(SrvId, Topic, Part) ->
     kafka_pid :: pid(),
     store_offsets :: boolean(),
     share_connection :: boolean(),
-    store_group :: binary()
+    store_group :: binary(),
+    debug :: boolean()
 }).
 
 
@@ -117,6 +128,7 @@ init([SrvId, Topic, Part, Config, LeaderPid, BrokerId]) ->
     Name = make_name(SrvId, Topic, Part),
     nklib_proc:put(?MODULE, Name),
     monitor(process, LeaderPid),
+    Debug = lists:member(producer, nkserver:get_cached_config(SrvId, nkkafka, debug)),
     State = #state{
         srv = SrvId,
         topic = Topic,
@@ -126,7 +138,8 @@ init([SrvId, Topic, Part, Config, LeaderPid, BrokerId]) ->
         leader_pid = LeaderPid,
         store_offsets = maps:get(store_offsets, Config, false),
         share_connection = maps:get(share_connection, Config, false),
-        store_group = nkserver:get_cached_config(SrvId, nkkafka, store_offsets_group)
+        store_group = nkserver:get_cached_config(SrvId, nkkafka, store_offsets_group),
+        debug = Debug
     },
     self() ! do_init,
     {ok, State}.
@@ -228,11 +241,15 @@ do_init(last, State) ->
     ?LLOG(notice, "started (~p) (starting at LAST offset: ~p)", [self(), Offset], State),
     {ok, State#state{next_offset = Offset}};
 
-
 do_init(first, State) ->
     Offset = find_offset(first, State),
     ?LLOG(notice, "started (~p) (starting at FIRST offset: ~p)", [self(), Offset], State),
+    {ok, State#state{next_offset = Offset}};
+
+do_init(Offset, State) ->
+    ?LLOG(notice, "started (~p) (starting at SPECIFIC offset: ~p)", [self(), Offset], State),
     {ok, State#state{next_offset = Offset}}.
+
 
 
 connect(State) ->
@@ -249,7 +266,7 @@ connect(State) ->
         true ->
             {consumer, Topic}
     end,
-    case nkkafka_brokers:get_connection({SrvId, BrokerId, ConnId}) of
+    case nkkafka_broker:get_connection({SrvId, BrokerId, ConnId}) of
         {ok, ConsumerPid} ->
             monitor(process, ConsumerPid),
             {ok, State#state{kafka_pid = ConsumerPid}};
@@ -286,9 +303,9 @@ find_stored_offset(State) ->
 
 %% @private
 read_messages(State) ->
-    #state{next_offset = Offset} = State,
+    #state{srv = SrvId, next_offset = Offset} = State,
     Start = nklib_date:epoch(msecs),
-    case nklib_util:do_config_get(nkkafka_subscribers_paused) of
+    case nkkafka:subscribers_paused(SrvId) of
         true ->
             State;
         _ ->
@@ -301,8 +318,10 @@ read_messages(State) ->
                     Time1 = nklib_date:epoch(msecs),
                     State2 = process_messages(Msgs, State),
                     Time2 = nklib_date:epoch(msecs),
-                    ?LLOG(notice, "read ~p messages from offset ~p to ~p (up to ~p) (~pmsecs+~pmsecs).",
-                          [Total, Offset, State2#state.next_offset-1, Last-1, Time1-Start, Time2-Time1], State),
+                    #state{next_offset = Next} = State2,
+                    ?DEBUG("read ~p messages from offset ~p to ~p (~p pending) "
+                                  "(~pmsecs+~pmsecs).",
+                          [Total, Offset, Next-1, Last-Next, Time1-Start, Time2-Time1], State),
                     insert_offset(State2),
                     read_messages(State2);
                 {error, Error} ->

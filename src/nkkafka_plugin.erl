@@ -48,18 +48,19 @@ plugin_config(_SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
         }},
         subscribers => {list, #{
             topic => binary,
-            start_at => {atom, [last, first, stored]},
+            start_at => [{atom, [last, first, stored]}, integer],
             store_offsets => boolean,
             share_connection => boolean,    % Single connection to kafka for all partitions
             '__mandatory' => [topic],
             '__defaults' => #{start_at => last},
             '__unique_keys' => [topic]
         }},
+        subscribers_paused => boolean,
         store_offsets_group => binary,
         producer_ack => {atom, [none, leader, all]},
         producer_timeout => integer,
         producer_queue_size => integer,
-        debug => {list, {atom, [processor]}},
+        debug => {list, {atom, [protocol,producer,subscriber]}},
         '__mandatory' => [brokers],
         '__defaults' => #{
             producer_ack => leader,
@@ -84,7 +85,12 @@ plugin_cache(SrvId, Config, _Service) ->
 
 %% @doc
 %% Connections and producers are inserted on demand
-plugin_start(_SrvId, _Config, _Service) ->
+plugin_start(SrvId, Config, _Service) ->
+    Paused = case Config of
+        #{subscribers_paused:=true} -> true;
+        _ -> false
+    end,
+    nkkafka:pause_subscribers(SrvId, Paused),
     ok.
 
 
@@ -93,7 +99,12 @@ plugin_stop(_SrvId, _Config, _Service) ->
 
 
 %% @doc
-plugin_update(_SrvId, _NewConfig, _OldConfig, _Service) ->
+plugin_update(SrvId, NewConfig, _OldConfig, _Service) ->
+    Paused = case NewConfig of
+        #{subscribers_paused:=true} -> true;
+        _ -> false
+    end,
+    nkkafka:pause_subscribers(SrvId, Paused),
     ok.
 
 
