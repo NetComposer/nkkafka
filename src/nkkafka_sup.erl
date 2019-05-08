@@ -37,19 +37,19 @@ start_link() ->
     Childs = [
         #{
             id => brokers,
-            start => {nkkafka_brokers, start_link, []},
+            start => {nkkafka_broker, start_link, []},
             restart => permanent,
             shutdown => 5000,
             type => worker,
-            modules => [nkkafka_brokers]
+            modules => [nkkafka_broker]
         },
         #{
             id => producers,
-            start => {nkkafka_producers, start_link, []},
+            start => {nkkafka_producer, start_link, []},
             restart => permanent,
             shutdown => 5000,
             type => worker,
-            modules => [nkkafka_producers]
+            modules => [nkkafka_producer]
         }
     ],
     supervisor:start_link({local, ?MODULE}, ?MODULE, {{one_for_one, 10, 60}, Childs}).

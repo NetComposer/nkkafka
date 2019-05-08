@@ -131,7 +131,7 @@ get_offset(SrvId, Topic, Partition, Pos) ->
                 ]
             },
             % Use shared connection for this broker
-            case nkkafka_brokers:send_request({SrvId, BrokerId}, Req) of
+            case nkkafka_broker:send_request({SrvId, BrokerId}, Req) of
                 {ok, #{Topic2:=#{Partition:=#{error:=Error}}}} ->
                     {ok, Error};
                 {ok, #{Topic2:=#{Partition:=#{offsets:=[Offset]}}}} ->
@@ -174,7 +174,7 @@ produce(SrvId, Topic, Partition, Value, Opts) when is_atom(SrvId) ->
                     }
                 ]
             },
-            case nkkafka_brokers:send_request({SrvId, BrokerId}, Request) of
+            case nkkafka_broker:send_request({SrvId, BrokerId}, Request) of
                 {ok, #{Topic2:=#{Partition:=#{error:=Error}}}} ->
                     {error, Error};
                 {ok, #{Topic2:=#{Partition:=#{offset:=Offset}}}} ->
@@ -214,7 +214,7 @@ fetch(SrvId, Topic, Partition, Offset, Opts) when is_atom(SrvId) ->
                 max_wait = maps:get(max_wait, Opts, 100),
                 min_bytes = maps:get(min_bytes, Opts, 0)
             },
-            case nkkafka_brokers:send_request({SrvId, BrokerId}, Request) of
+            case nkkafka_broker:send_request({SrvId, BrokerId}, Request) of
                 {ok, #{Topic2:=#{Partition:=#{error:=Error}}}} ->
                     {error, {partition_error, Error}};
                 {ok, #{Topic2:=#{Partition:=Data}}} ->
@@ -225,6 +225,17 @@ fetch(SrvId, Topic, Partition, Offset, Opts) when is_atom(SrvId) ->
         {error, Error} ->
             {error, Error}
     end.
+
+
+%% @doc Sets all subscribers in paused mode
+pause_subscribers(SrvId, Paused) when is_boolean(Paused) ->
+    nklib_util:do_config_put({nkkafka_subscribers_paused, SrvId}, Paused).
+
+
+%% @doc Gets if subscribers are paused
+subscribers_paused(SrvId) ->
+    nklib_util:do_config_get({nkkafka_subscribers_paused, SrvId}).
+
 
 
 

@@ -237,7 +237,7 @@ start_link(SrvId, Topic) ->
 
 %% @private
 connect_broker(BrokerId, #state{srv=SrvId, topic=Topic, brokers=Brokers}=State) ->
-    case nkkafka_brokers:get_connection({SrvId, BrokerId, {producer, Topic}}) of
+    case nkkafka_broker:get_connection({SrvId, BrokerId, {producer, Topic}}) of
         {ok, Pid} ->
             monitor(process, Pid),
             Brokers2 = Brokers#{BrokerId => Pid},
@@ -343,16 +343,16 @@ do_send_partition(Pid, Partition, Msgs, State) ->
         ]
     },
     Start = nklib_date:epoch(msecs),
-    case nkkafka_brokers:send_request(Pid, Request) of
+    case nkkafka_broker:send_request(Pid, Request) of
         {ok, #{Topic:=#{Partition:=#{error:=Error}}}} ->
             {error, Error, State};
         {ok, #{Topic:=#{Partition:=#{offset:=Offset}}}} ->
             Time = nklib_date:epoch(msecs) - Start,
-            ?LLOG(debug, "sent ~p messages in ~pmsecs, partition ~p, offset ~p",
+            ?DEBUG("sent ~p messages in ~pmsecs, partition ~p, offset ~p",
                 [length(Msgs), Time, Partition, Offset], State),
             {ok, Offset, State};
         {ok, no_ack} ->
-            ?LLOG(debug, "sent ~p messages, partition ~p",
+            ?DEBUG("sent ~p messages, partition ~p",
                 [length(Msgs), Partition], State),
             {ok, unknown, State};
         {error, Error} ->

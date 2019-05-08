@@ -18,12 +18,13 @@
 %%
 %% -------------------------------------------------------------------
 
--module(nkkafka_producers).
+%% Started from main supervisor to serialize connections to brokers started protocol servers
+-module(nkkafka_broker).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -behaviour(gen_server).
 
--export([produce/4, produce_async/4, get_info/2]).
--export([start_link/0, get_producer/2]).
+-export([send_request/2, send_async_request/2, stop/1]).
+-export([start_link/0, get_connection/1]).
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2]).
 
@@ -32,43 +33,59 @@
 %% Types
 %% ===================================================================
 
+-type conn_id() ::
+    pid() |
+    nkserver:id() |
+    {nkserver:id(), nkkafka:broker_id()} |
+    {nkserver:id(), nkkafka:broker_id(), term()}.
 
 
 %% ===================================================================
 %% Public
 %% ===================================================================
 
-%% @doc Starts producer and insert message
-%% If key is <<>>, a random partition will be selected
-%% For any other, same partition will be use for same key
-produce(SrvId, Topic, Key, Msg) ->
-    do_call(SrvId, to_bin(Topic), {insert, to_bin(Key), to_bin(Msg)}).
 
+%% @doc
+-spec send_request(conn_id(), tuple()) ->
+    {ok, term()} | {error, term()}.
 
-%% @doc Starts producer and insert message
-produce_async(SrvId, Topic, Key, Msg) ->
-    do_cast(SrvId, to_bin(Topic), {insert, to_bin(Key), to_bin(Msg)}).
+send_request(ConnId, Request) when is_tuple(Request) ->
+    do_call(ConnId, Request).
 
 
 %% @doc
-get_info(SrvId, Topic) ->
-    do_call(SrvId, to_bin(Topic), get_info).
+-spec send_async_request(conn_id(), tuple()) ->
+    ok | {error, term()}.
+
+send_async_request(ConnId, Request) when is_tuple(Request) ->
+    do_cast(ConnId, Request).
+
+
+%% @doc
+-spec stop(conn_id()) ->
+    ok | {error, term()}.
+
+stop(ConnId) ->
+    do_cast(ConnId, nkkafka_stop).
 
 
 %% @private
-do_call(SrvId, Topic,  Msg) ->
-    do_call(SrvId, Topic, Msg, 5).
+do_call(Pid, Msg) when is_pid(Pid) ->
+    nkkafka_protocol:send_request(Pid, Msg);
+
+do_call(Id, Msg) ->
+    do_call(Id, Msg, 5).
 
 
 %% @private
-do_call(SrvId, Topic, Msg, Tries) when Tries > 0 ->
-    case get_producer(SrvId, Topic) of
-        {ok, Pid} ->
-            case nkkafka_producer_srv:sync(Pid, Msg) of
+do_call(Id, Msg, Tries) when Tries > 0 ->
+    case get_connection(Id) of
+        {ok, Pid} when is_pid(Pid) ->
+            case do_call(Pid, Msg) of
                 {error, process_not_found} when Tries > 1 ->
-                    lager:notice("NkKAFKA producer failed, retrying"),
+                    lager:notice("NkKAFKA Protocol failed, retrying"),
                     timer:sleep(100),
-                    do_call(SrvId, Topic, Msg, Tries-1);
+                    do_call(Id, Msg, Tries-1);
                 Other ->
                     Other
             end;
@@ -78,22 +95,22 @@ do_call(SrvId, Topic, Msg, Tries) when Tries > 0 ->
 
 
 %% @private
-do_cast(SrvId, Topic, Msg) ->
-    case get_producer(SrvId, Topic) of
+do_cast(Id, Msg) ->
+    case get_connection(Id) of
         {ok, Pid} ->
-            nkkafka_producer_srv:async(Pid, Msg);
+            gen_server:cast(Pid, Msg);
         {error, Error} ->
             {error, Error}
     end.
 
 
 %% @private
-get_producer(SrvId, Topic) ->
-    case nkkafka_producer_srv:find(SrvId, Topic) of
+get_connection(Id) ->
+    case nkkafka_protocol:find_connection(Id) of
         {ok, Pid} ->
             {ok, Pid};
         undefined ->
-            gen_server:call(?MODULE, {get_producer, SrvId, Topic}, infinity)
+            gen_server:call(?MODULE, {get_connection, Id}, infinity)
     end.
 
 
@@ -118,12 +135,12 @@ init([]) ->
 
 
 %% @private
-handle_call({get_producer, SrvId, Topic}, _From, State) ->
-    case nkkafka_producer_srv:find(SrvId, Topic) of
+handle_call({get_connection, Id}, _From, State) ->
+    case nkkafka_protocol:find_connection(Id) of
         {ok, Pid} ->
             {reply, {ok, Pid}, State};
         _ ->
-            Reply = nkkafka_producer_srv:start(SrvId, Topic),
+            Reply = nkkafka_protocol:connect(Id),
             {reply, Reply, State}
     end;
 
@@ -163,7 +180,3 @@ terminate(_Reason, _State) ->
     ok.
 
 
-
-%% @private
-to_bin(K) when is_binary(K) -> K;
-to_bin(K) -> nklib_util:to_binary(K).

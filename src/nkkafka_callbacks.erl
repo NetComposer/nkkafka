@@ -35,6 +35,7 @@
 
 -type meta() ::
     #{
+        topic => integer(),
         partition => integer(),
         key => binary,
         offset => integer(),
@@ -47,7 +48,7 @@
 
 %% @doc Called when a new message is received in a processor
 %% This function is blocking for the partition
--spec kafka_message(Topic::binary(), binary, meta()) ->
+-spec kafka_message(Topic::binary(), Msg::binary(), meta()) ->
     ok.
 
 kafka_message(Topic, _Value, _Meta) ->

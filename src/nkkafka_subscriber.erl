@@ -337,7 +337,7 @@ fetch(State) ->
         max_wait = 1000,
         min_bytes = 0
     },
-    case nkkafka_brokers:send_request(ConsumerPid, Request) of
+    case nkkafka_broker:send_request(ConsumerPid, Request) of
         {ok, #{Topic:=#{Partition:=#{error:=Error}}}} ->
             {error, {partition_error, Error}};
         {ok, #{Topic:=#{Partition:=Data}}} ->
@@ -345,7 +345,6 @@ fetch(State) ->
         {error, Error} ->
             {error, Error}
     end.
-
 
 
 %% @private

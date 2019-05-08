@@ -143,7 +143,7 @@ heartbeat_group(SrvId, Group, Generation, Member) ->
         generation = Generation,
         member = to_bin(Member)
     },
-    case nkkafka_brokers:send_request(SrvId, Req) of
+    case nkkafka_broker:send_request(SrvId, Req) of
         {ok, #{error:=Error}} ->
             {error, {kafka_error, Error}};
         {ok, _} ->
