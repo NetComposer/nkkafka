@@ -282,7 +282,7 @@ conn_init(NkPort) ->
     set_debug(State),
     Idle = maps:get(idle_timeout, Opts),
     self() ! do_heartbeat,
-    ?LLOG(debug, "new connection (~p) (~s) (idle:~p)", [self(), Remote, Idle], State),
+    ?DEBUG("new connection (~p) (~s) (idle:~p)", [self(), Remote, Idle], State),
     {ok, State}.
 
 
