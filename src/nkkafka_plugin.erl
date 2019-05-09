@@ -48,7 +48,7 @@ plugin_config(_SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
         }},
         subscribers => {list, #{
             topic => binary,
-            start_at => [{atom, [last, first, stored]}, integer],
+            start_at => {atom, [last, first, stored]},
             store_offsets => boolean,
             share_connection => boolean,    % Single connection to kafka for all partitions
             '__mandatory' => [topic],

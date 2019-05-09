@@ -25,7 +25,7 @@
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -behaviour(gen_server).
 
--export([start/5, get_info/1, get_info/3, get_all/0, make_name/3]).
+-export([start/5, get_info/1, get_info/3, reposition/4, get_all/0, make_name/3]).
 -export([init/1, terminate/2, code_change/3, handle_call/3,
          handle_cast/2, handle_info/2]).
 -import(nklib_util, [to_binary/1]).
@@ -88,6 +88,11 @@ get_info(Name) ->
     gen_server:call(Name, get_info).
 
 
+%% @doc Forces reposition on an offset
+%% Highly recommended to pause subscribers before (nkkafka:pause_subscribers/2)
+reposition(SrvId, Topic, Part, Offset) ->
+    gen_server:call(make_name(SrvId, Topic, Part), {reposition, Offset}).
+
 
 %% @private
 get_all() ->
@@ -128,7 +133,7 @@ init([SrvId, Topic, Part, Config, LeaderPid, BrokerId]) ->
     Name = make_name(SrvId, Topic, Part),
     nklib_proc:put(?MODULE, Name),
     monitor(process, LeaderPid),
-    Debug = lists:member(producer, nkserver:get_cached_config(SrvId, nkkafka, debug)),
+    Debug = lists:member(subscriber, nkserver:get_cached_config(SrvId, nkkafka, debug)),
     State = #state{
         srv = SrvId,
         topic = Topic,
@@ -157,6 +162,9 @@ handle_call(get_info, _From, State) ->
         last_stored_offset => find_stored_offset(State)
     },
     {reply, {ok, Data}, State};
+
+handle_call({reposition, Offset}, _From, State) ->
+    {reply, ok, State#state{next_offset = Offset}};
 
 handle_call(Msg, _From, State) ->
     lager:error("Module ~p received unexpected call ~p", [?MODULE, Msg]),
@@ -244,14 +252,10 @@ do_init(last, State) ->
 do_init(first, State) ->
     Offset = find_offset(first, State),
     ?LLOG(notice, "started (~p) (starting at FIRST offset: ~p)", [self(), Offset], State),
-    {ok, State#state{next_offset = Offset}};
-
-do_init(Offset, State) ->
-    ?LLOG(notice, "started (~p) (starting at SPECIFIC offset: ~p)", [self(), Offset], State),
     {ok, State#state{next_offset = Offset}}.
 
 
-
+%% @private
 connect(State) ->
     #state{
         srv = SrvId,
