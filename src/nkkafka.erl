@@ -235,7 +235,7 @@ pause_subscribers(SrvId, Paused) when is_boolean(Paused) ->
 
 %% @doc Gets if subscribers are paused
 subscribers_paused(SrvId) ->
-    nklib_util:do_config_get({nkkafka_subscribers_paused, SrvId}).
+    nklib_util:do_config_get({nkkafka_subscribers_paused, SrvId}, false).
 
 
 
