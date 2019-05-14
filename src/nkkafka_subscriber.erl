@@ -323,6 +323,9 @@ read_messages(State) ->
                     State2 = process_messages(Msgs, State),
                     Time2 = nklib_date:epoch(msecs),
                     #state{next_offset = Next} = State2,
+                    %?LLOG(notice, "read ~p messages from offset ~p to ~p (~p pending) "
+                    %"(~pmsecs+~pmsecs).",
+                    %    [Total, Offset, Next-1, Last-Next, Time1-Start, Time2-Time1], State),
                     ?DEBUG("read ~p messages from offset ~p to ~p (~p pending) "
                                   "(~pmsecs+~pmsecs).",
                           [Total, Offset, Next-1, Last-Next, Time1-Start, Time2-Time1], State),
