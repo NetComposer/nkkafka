@@ -207,7 +207,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, #state{leader_pid=Pid}=State) 
     {stop, normal, State};
 
 handle_info({'DOWN', _Ref, process, Pid, Reason}, #state{kafka_pid=Pid}=State) ->
-    ?LLOG(notice, "consumer is down (~p), stopping", [Reason], State),
+    ?LLOG(info, "connection is down (~p), stopping", [Reason], State),
     {stop, normal, State};
 
 handle_info(Info, State) ->

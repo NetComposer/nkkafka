@@ -107,7 +107,12 @@ handle_call(_Msg, _From, _SrvId, _State) ->
 handle_info({'DOWN', _Ref, process, Pid, Reason}, _SrvId, #{pids:=Pids}=State) ->
     case maps:take(Pid, Pids) of
         {{subscriber, Topic, Part}, Pids2} ->
-            ?LLOG(warning, "partition ~s:~p has failed! (~p)", [Topic, Part, Reason]),
+            case Reason of
+                normal ->
+                    ok;
+                _ ->
+                    ?LLOG(warning, "partition ~s:~p has failed! (~p)", [Topic, Part, Reason])
+            end,
             #{subscribers:=Subscribers} = State,
             Subscribers2 = maps:remove({Topic, Part}, Subscribers),
             {noreply, State#{subscribers:=Subscribers2, pids:=Pids2}};
