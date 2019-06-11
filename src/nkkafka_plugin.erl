@@ -21,7 +21,7 @@
 %% @doc Default callbacks for plugin definitions
 -module(nkkafka_plugin).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([plugin_deps/0, plugin_config/3, plugin_cache/3,
+-export([plugin_deps/0, plugin_meta/0, plugin_config/3, plugin_cache/3,
          plugin_start/3, plugin_update/4, plugin_stop/3]).
 
 -include("nkkafka.hrl").
@@ -36,6 +36,9 @@
 
 plugin_deps() ->
 	[nkserver].
+
+plugin_meta() ->
+    #{use_master => true}.
 
 
 %% @doc

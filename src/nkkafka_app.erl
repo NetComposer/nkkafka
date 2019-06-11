@@ -51,7 +51,6 @@ start(_Type, _Args) ->
             {ok, Pid} = nkkafka_sup:start_link(),
             {ok, Vsn} = application:get_key(nkserver, vsn),
             lager:info("NkKAFKA v~s has started.", [Vsn]),
-            nkserver_util:register_package_class(?PACKAGE_CLASS_KAFKA, nkkafka, #{use_master=>true}),
             {ok, Pid};
         {error, Error} ->
             lager:error("Error parsing config: ~p", [Error]),
