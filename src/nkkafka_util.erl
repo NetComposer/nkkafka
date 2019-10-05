@@ -79,18 +79,23 @@ update_metadata(_SrvId, [{error, Error}|_], _Req) ->
 update_metadata(SrvId, [#{host:=Host, port:=Port}|Rest], Req) ->
     case nkpacket_dns:ips(Host) of
         [Ip|_] ->
+            lager:error("NKLOG RESOLVED: ~p ~p", [Ip, Port]),
             case nkkafka_protocol:connect(SrvId, 0, Ip, Port, {exclusive, metadata}) of
                 {ok, Pid} ->
+                    lager:error("NKLOG CONNECTED: ~p", [Pid]),
                     case nkkafka_protocol:send_request(Pid, Req) of
                         {ok, {Brokers, Topics}} ->
+                            lager:error("NKLOG SEND1"),
                             nkkafka_protocol:stop(Pid),
                             update_brokers(SrvId, maps:to_list(Brokers)),
                             update_topics(SrvId, maps:to_list(Topics)),
                             {ok, {Brokers, Topics}};
                         {error, Error} ->
+                            lager:error("NKLOG SEND2: ~p", [Error]),
                             update_metadata(SrvId, Rest++[{error, Error}], Req)
                     end;
                 {error, Error} ->
+                    lager:error("NKLOG NOT CONNECTED"),
                     update_metadata(SrvId, Rest++[{error, Error}], Req)
             end;
         [] ->
