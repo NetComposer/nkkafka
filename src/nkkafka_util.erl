@@ -76,11 +76,11 @@ update_metadata(_SrvId, [], _Req) ->
 update_metadata(_SrvId, [{error, Error}|_], _Req) ->
     {error, Error};
 
-update_metadata(SrvId, [#{host:=Host, port:=Port}|Rest], Req) ->
+update_metadata(SrvId, [#{host:=Host}=Broker|Rest], Req) ->
     case nkpacket_dns:ips(Host) of
         [Ip|_] ->
-            lager:error("NKLOG RESOLVED: ~p ~p", [Ip, Port]),
-            case nkkafka_protocol:connect(SrvId, 0, Ip, Port, {exclusive, metadata}) of
+            lager:error("NKLOG RESOLVED: ~p", [Ip]),
+            case nkkafka_protocol:connect(SrvId, 0, Ip, Broker, {exclusive, metadata}) of
                 {ok, Pid} ->
                     lager:error("NKLOG CONNECTED: ~p", [Pid]),
                     case nkkafka_protocol:send_request(Pid, Req) of
@@ -108,10 +108,10 @@ update_metadata(SrvId, [#{host:=Host, port:=Port}|Rest], Req) ->
 update_brokers(_SrvId, []) ->
     ok;
 
-update_brokers(SrvId, [{BrokerId, #{host:=Host, port:=Port}}|Rest]) ->
+update_brokers(SrvId, [{BrokerId, #{host:=Host}=Broker}|Rest]) ->
     case nkpacket_dns:ips(Host) of
         [Ip|_] ->
-            nkserver:put(SrvId, {broker, BrokerId}, {Ip, Port});
+            nkserver:put(SrvId, {broker, BrokerId}, {Ip, Broker});
         [] ->
             lager:warning("Could not resolve broker '~s'", [Host])
     end,

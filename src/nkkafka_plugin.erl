@@ -47,7 +47,9 @@ plugin_config(_SrvId, Config, #{class:=nkkafka}) ->
         brokers => {list, #{
             host => host,
             port => {integer, 1, 65535},
-            '__defaults' => #{host=><<"127.0.0.1">>, port=>9092}
+            protocol => {atom, [tcp, tls]},
+            opts => nkpacket_syntax:safe_syntax(),
+            '__defaults' => #{host=><<"127.0.0.1">>, port=>9092, protocol=>tcp}
         }},
         subscribers => {list, #{
             topic => binary,

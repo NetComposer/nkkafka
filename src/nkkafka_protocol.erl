@@ -105,20 +105,21 @@ connect({SrvId, BrokerId, ConnId}) when is_atom(SrvId), is_integer(BrokerId) ->
 
 connect(SrvId, BrokerId, ConnId) ->
     case nkkafka_util:cached_broker(SrvId, BrokerId) of
-        {Ip, Port} ->
-            connect(SrvId, BrokerId, Ip, Port, ConnId);
+        {Ip, Broker} ->
+            connect(SrvId, BrokerId, Ip, Broker, ConnId);
         undefined ->
             {error, broker_undefined}
     end.
 
 
 %% @doc Starts a new session
--spec connect(nkserver:id(), nkkafka:broker_id(), inet:ip_address(), inet:port_number(), term()) ->
+-spec connect(nkserver:id(), nkkafka:broker_id(), inet:ip_address(), map(), term()) ->
     {ok, pid()} | {error, term()}.
 
-connect(SrvId, BrokerId, Ip, Port, ConnId) ->
+connect(SrvId, BrokerId, Ip, #{port=Port, protocol=>Proto}=Broker, ConnId) ->
     SrvPid = whereis(SrvId),
-    ConnOpts = #{
+    ConnOpts1 = maps:get(opts, Broker, #{}),
+    ConnOpts2 = ConnOpts1#{
         id => {nkkafka_client, SrvId, BrokerId, ConnId},
         class => {nkkafka_client, SrvId},
         monitor => SrvPid,
@@ -130,10 +131,10 @@ connect(SrvId, BrokerId, Ip, Port, ConnId) ->
     },
     Conn = #nkconn{
         protocol = nkkafka_protocol,
-        transp = tcp,
+        transp = Proto,
         ip = Ip,
         port = Port,
-        opts = ConnOpts
+        opts = ConnOpts2
     },
     case nkpacket:connect(Conn, #{}) of
         {ok, #nkport{pid=Pid}} ->
@@ -291,6 +292,7 @@ conn_init(NkPort) ->
     {ok, #state{}} | {stop, term(), #state{}}.
 
 conn_parse(close, _NkPort, State) ->
+    lager:error("NKLOG RECEIVED CLOSE"),
     {ok, State};
 
 conn_parse(<<TId:32/signed-integer, Data/binary>>, _NkPort, State) ->
@@ -331,6 +333,7 @@ conn_handle_call(get_state, From, _NkPort, State) ->
     {ok, #state{}} | {stop, Reason::term(), #state{}}.
 
 conn_handle_cast({nkkafka_send_req, Request}, NkPort, State) ->
+    lager:error("NKLOG REQ1"),
     send_request(Request,  undefined, NkPort, State);
 
 conn_handle_cast(nkkafka_stop, _NkPort, State) ->
@@ -400,11 +403,15 @@ send_request(Request, From, NkPort, #state{tid=TId}=State) ->
             insert_op(TId, API, element(1, Request), From, State2)
     end,
     %?LLOG(error, "NKLOG SEND REQ2", [], State),
+    lager:error("NKLOG SEND ~p", [Bin]),
     case nkpacket_connection:send(NkPort, Bin) of
         ok ->
+            lager:error("NKLOG SENT"),
             {ok, State3#state{tid=TId+1}};
         {error, Error} ->
             ?LLOG(warning, "error sending: ~p", [Error], State),
+            lager:error("NKLOG ERROR SENDING"),
+            gen_server:reply(From, {send_error, Error}),
             {stop, normal, State3}
     end.
 
