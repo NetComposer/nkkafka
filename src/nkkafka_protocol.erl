@@ -116,7 +116,7 @@ connect(SrvId, BrokerId, ConnId) ->
 -spec connect(nkserver:id(), nkkafka:broker_id(), inet:ip_address(), map(), term()) ->
     {ok, pid()} | {error, term()}.
 
-connect(SrvId, BrokerId, Ip, #{port=Port, protocol=>Proto}=Broker, ConnId) ->
+connect(SrvId, BrokerId, Ip, #{port:=Port, protocol:=Proto}=Broker, ConnId) ->
     SrvPid = whereis(SrvId),
     ConnOpts1 = maps:get(opts, Broker, #{}),
     ConnOpts2 = ConnOpts1#{
@@ -403,14 +403,11 @@ send_request(Request, From, NkPort, #state{tid=TId}=State) ->
             insert_op(TId, API, element(1, Request), From, State2)
     end,
     %?LLOG(error, "NKLOG SEND REQ2", [], State),
-    lager:error("NKLOG SEND ~p", [Bin]),
     case nkpacket_connection:send(NkPort, Bin) of
         ok ->
-            lager:error("NKLOG SENT"),
             {ok, State3#state{tid=TId+1}};
         {error, Error} ->
             ?LLOG(warning, "error sending: ~p", [Error], State),
-            lager:error("NKLOG ERROR SENDING"),
             gen_server:reply(From, {send_error, Error}),
             {stop, normal, State3}
     end.
