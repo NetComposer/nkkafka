@@ -42,7 +42,7 @@ plugin_meta() ->
 
 
 %% @doc
-plugin_config(_SrvId, Config, #{class:=?PACKAGE_CLASS_KAFKA}) ->
+plugin_config(_SrvId, Config, #{class:=nkkafka}) ->
     Syntax = #{
         brokers => {list, #{
             host => host,
