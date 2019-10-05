@@ -47,10 +47,10 @@ plugin_config(_SrvId, Config, #{class:=nkkafka}) ->
         brokers => {list, #{
             host => host,
             port => {integer, 1, 65535},
-            protocol => {atom, [tcp, tls]},
-            opts => nkpacket_syntax:safe_syntax(),
-            '__defaults' => #{host=><<"127.0.0.1">>, port=>9092, protocol=>tcp}
+            '__defaults' => #{host=><<"127.0.0.1">>, port=>9092}
         }},
+        protocol => {atom, [tcp, tls]},
+        protocol_opts => nkpacket_syntax:safe_syntax(),
         subscribers => {list, #{
             topic => binary,
             start_at => {atom, [last, first, stored]},
@@ -68,6 +68,7 @@ plugin_config(_SrvId, Config, #{class:=nkkafka}) ->
         debug => {list, {atom, [protocol,producer,subscriber]}},
         '__mandatory' => [brokers],
         '__defaults' => #{
+            protocol => tcp,
             producer_ack => leader,
             producer_timeout => 60000,
             producer_queue_size => 100

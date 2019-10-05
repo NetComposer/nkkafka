@@ -25,6 +25,16 @@
 
 -include("nkkafka.hrl").
 
+-type broker_info() ::
+    #{
+        host => binary(),
+        ip => inet:ip4_address(),
+        port => inet:port_number(),
+        protocol => tcp|tls,
+        protocol_opts => map()
+    }.
+
+
 
 %% ===================================================================
 %% Types
@@ -33,7 +43,7 @@
 
 %% @doc
 -spec cached_broker(nkserver:id(), nkkafka:broker_id()) ->
-    {inet:ip_address(), inet:port_number()} | undefined.
+    broker_info() | undefined.
 
 cached_broker(SrvId, BrokerId) ->
     nkserver:get(SrvId, {broker, BrokerId}).
@@ -57,60 +67,67 @@ cached_partitions(SrvId, Topic) ->
 
 %% @doc Gets metadata opening a new connection to brokers
 update_metadata(SrvId) ->
-    Config = nkserver:get_config(SrvId),
-    Brokers = nklib_util:randomize(maps:get(brokers, Config, [])),
-    update_metadata(SrvId, Brokers, #req_metadata{}).
+    Config1 = nkserver:get_config(SrvId),
+    Brokers = nklib_util:randomize(maps:get(brokers, Config1, [])),
+    Config2 = maps:with([protocol, protocol_opts], Config1),
+    update_metadata(SrvId, Brokers, Config2, #req_metadata{}).
 
 
 %% @doc Gets metadata opening a new connection to brokers
 update_metadata(SrvId, Topic) ->
-    Config = nkserver:get_config(SrvId),
-    Brokers = nklib_util:randomize(maps:get(brokers, Config, [])),
-    update_metadata(SrvId, Brokers, #req_metadata{topics=[to_bin(Topic)]}).
+    Config1 = nkserver:get_config(SrvId),
+    Brokers = nklib_util:randomize(maps:get(brokers, Config1, [])),
+    Config2 = maps:with([protocol, protocol_opts], Config1),
+    update_metadata(SrvId, Brokers, Config2, #req_metadata{topics=[to_bin(Topic)]}).
 
 
 %% @private
-update_metadata(_SrvId, [], _Req) ->
+update_metadata(_SrvId, [], _Config, _Req) ->
     {error, no_available_brokers};
 
-update_metadata(_SrvId, [{error, Error}|_], _Req) ->
+update_metadata(_SrvId, [{error, Error}|_], _Config, _Req) ->
     {error, Error};
 
-update_metadata(SrvId, [#{host:=Host}=Broker|Rest], Req) ->
+update_metadata(SrvId, [#{host:=Host, port:=Port}|Rest], Config, Req) ->
     case nkpacket_dns:ips(Host) of
         [Ip|_] ->
-            case nkkafka_protocol:connect(SrvId, 0, Ip, Broker, {exclusive, metadata}) of
+            BrokerInfo = Config#{
+                ip => Ip,
+                port => Port
+            },
+            case nkkafka_protocol:connect(SrvId, 0, BrokerInfo, {exclusive, metadata}) of
                 {ok, Pid} ->
                     case nkkafka_protocol:send_request(Pid, Req) of
                         {ok, {Brokers, Topics}} ->
                             nkkafka_protocol:stop(Pid),
-                            update_brokers(SrvId, maps:to_list(Brokers)),
+                            update_brokers(SrvId, Config, maps:to_list(Brokers)),
                             update_topics(SrvId, maps:to_list(Topics)),
                             {ok, {Brokers, Topics}};
                         {error, Error} ->
-                            update_metadata(SrvId, Rest++[{error, Error}], Req)
+                            update_metadata(SrvId, Rest++[{error, Error}], BrokerInfo, Req)
                     end;
                 {error, Error} ->
-                    update_metadata(SrvId, Rest++[{error, Error}], Req)
+                    update_metadata(SrvId, Rest++[{error, Error}], BrokerInfo, Req)
             end;
         [] ->
-            update_metadata(SrvId, Rest, Req)
+            update_metadata(SrvId, Rest, Config, Req)
     end.
 
 
 
 %% @private
-update_brokers(_SrvId, []) ->
+update_brokers(_SrvId, _BrokerInfo, []) ->
     ok;
 
-update_brokers(SrvId, [{BrokerId, #{host:=Host}=Broker}|Rest]) ->
+update_brokers(SrvId, BrokerInfo, [{BrokerId, #{host:=Host}=Broker}|Rest]) ->
     case nkpacket_dns:ips(Host) of
         [Ip|_] ->
-            nkserver:put(SrvId, {broker, BrokerId}, {Ip, Broker});
+            BrokerInfo2 = maps:merge(BrokerInfo, Broker),
+            nkserver:put(SrvId, {broker, BrokerId}, BrokerInfo2#{ip=>Ip});
         [] ->
             lager:warning("Could not resolve broker '~s'", [Host])
     end,
-    update_brokers(SrvId, Rest).
+    update_brokers(SrvId, BrokerInfo, Rest).
 
 
 %% @private

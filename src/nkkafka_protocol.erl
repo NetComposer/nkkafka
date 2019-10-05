@@ -23,7 +23,7 @@
 
 
 -module(nkkafka_protocol).
--export([connect/1, connect/3, connect/5, find_connection/1]).
+-export([connect/1, connect/3, connect/4, find_connection/1]).
 -export([send_request/2, send_async_request/2, stop/1]).
 -export([get_state/1, get_all/0]).
 -export([start_link/3]).
@@ -105,20 +105,20 @@ connect({SrvId, BrokerId, ConnId}) when is_atom(SrvId), is_integer(BrokerId) ->
 
 connect(SrvId, BrokerId, ConnId) ->
     case nkkafka_util:cached_broker(SrvId, BrokerId) of
-        {Ip, Broker} ->
-            connect(SrvId, BrokerId, Ip, Broker, ConnId);
         undefined ->
-            {error, broker_undefined}
+            {error, broker_undefined};
+        BrokerInfo ->
+            connect(SrvId, BrokerId, BrokerInfo, ConnId)
     end.
 
 
 %% @doc Starts a new session
--spec connect(nkserver:id(), nkkafka:broker_id(), inet:ip_address(), map(), term()) ->
+-spec connect(nkserver:id(), nkkafka:broker_id(), nkkafka_util:broker_info(), term()) ->
     {ok, pid()} | {error, term()}.
 
-connect(SrvId, BrokerId, Ip, #{port:=Port, protocol:=Proto}=Broker, ConnId) ->
+connect(SrvId, BrokerId, #{ip:=Ip, port:=Port, protocol:=Proto}=Broker, ConnId) ->
     SrvPid = whereis(SrvId),
-    ConnOpts1 = maps:get(opts, Broker, #{}),
+    ConnOpts1 = maps:get(protocol_opts, Broker, #{}),
     ConnOpts2 = ConnOpts1#{
         id => {nkkafka_client, SrvId, BrokerId, ConnId},
         class => {nkkafka_client, SrvId},
