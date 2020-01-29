@@ -331,6 +331,9 @@ read_messages(State) ->
                           [Total, Offset, Next-1, Last-Next, Time1-Start, Time2-Time1], State),
                     insert_offset(State2),
                     read_messages(State2);
+                {error, {partition_error,not_leader_for_partition}} ->
+                    ?LLOG(error, "could not read from offset ~p: NO LEADER, FORCING ERROR", [Offset], State),
+                    error(force_kafka_error);
                 {error, Error} ->
                     % It the protocol process fails, we will detect and retry later
                     ?LLOG(error, "could not read from offset ~p: ~p", [Offset, Error], State),
