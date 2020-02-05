@@ -195,7 +195,7 @@ handle_info(do_send, State) ->
     {noreply, State2};
 
 handle_info(insert_timeout, State) ->
-    ?LLOG(info, "producer timeout", [], State),
+    ?LLOG(debug, "producer timeout", [], State),
     {stop, normal, State};
 
 handle_info({'DOWN', _Ref, process, Pid, Reason}, #state{brokers=Brokers}=State) ->
