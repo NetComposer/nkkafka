@@ -160,7 +160,6 @@ get_offsets(SrvId, Topic) ->
 
 %% @private
 get_offsets(Part, SrvId, Topic, Acc) ->
-    lager:error("NKLOG CALLING FOR ~p", [{Part, SrvId, Topic}]),
     case get_offset(SrvId, Topic, Part, first) of
         {ok, First} ->
             case get_offset(SrvId, Topic, Part, next) of
@@ -168,7 +167,7 @@ get_offsets(Part, SrvId, Topic, Acc) ->
                     Acc2 = Acc#{Part => #{first=>First, next=>Next}},
                     case Part > 0 of
                         true ->
-                            get_offset(Part-1, SrvId, Topic, Acc2);
+                            get_offsets(Part-1, SrvId, Topic, Acc2);
                         false ->
                             {ok, Acc2}
                     end;
