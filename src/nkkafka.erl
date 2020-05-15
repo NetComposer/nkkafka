@@ -23,7 +23,7 @@
 -module(nkkafka).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
 -export([get_metadata/1, get_partitions/2, get_offset/4, get_stored_offsets/4]).
--export([produce/5, fetch/5, get_leader/3, get_topic_leaders/2]).
+-export([produce/5, fetch/5, fetch_all/4, get_leader/3, get_topic_leaders/2]).
 -export([pause_subscribers/2, subscribers_paused/1]).
 
 -include("nkkafka.hrl").
@@ -110,8 +110,8 @@ get_partitions(SrvId, Topic) ->
     end.
 
 
-%% @doc Get the first or last offset for all partitions of a topic
--spec get_offset(nkserver:id(), topic(), partition(), first|last) ->
+%% @doc Get the first existing or next offset for all partitions of a topic
+-spec get_offset(nkserver:id(), topic(), partition(), first|next) ->
     {ok, #{partition() := offset() | {error, integer()}}} | {error, term()}.
 
 get_offset(SrvId, Topic, Partition, Pos) ->
@@ -148,13 +148,13 @@ get_offset(SrvId, Topic, Partition, Pos) ->
 get_stored_offsets(SrvId, Group, Topic, Partition) ->
     case get_offset(SrvId, Topic, Partition, first) of
         {ok, First} ->
-            case get_offset(SrvId, Topic, Partition, last) of
-                {ok, Last} ->
+            case get_offset(SrvId, Topic, Partition, next) of
+                {ok, Next} ->
                     case get_leader(SrvId, Topic, Partition) of
                         {ok, BrokerId} ->
                             case nkkafka_groups:offset_fetch({SrvId, BrokerId}, Group, Topic, Partition) of
                                 {ok, _Meta, Stored} ->
-                                    {ok, #{first=>First, last=>Last, stored=>Stored}};
+                                    {ok, #{first=>First, next=>Next, stored_next=>Stored}};
                                 {error, Error} ->
                                     {error, Error}
                             end;
@@ -167,9 +167,6 @@ get_stored_offsets(SrvId, Group, Topic, Partition) ->
         {error, Error} ->
             {error, Error}
     end.
-
-
-
 
 
 
@@ -250,6 +247,26 @@ fetch(SrvId, Topic, Partition, Offset, Opts) when is_atom(SrvId) ->
                     {ok, Data};
                 {error, Error} ->
                     {error, Error}
+            end;
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
+fetch_all(SrvId, Topic, Partition, Offset) ->
+    fetch_all(SrvId, Topic, Partition, Offset, []).
+
+
+fetch_all(SrvId, Topic, Partition, Offset, Acc) ->
+    lager:warning("Starting from: ~p", [Offset]),
+    case fetch(SrvId, Topic, Partition, Offset, #{}) of
+        {ok, #{messages:=Msgs}} ->
+            case Msgs of
+                [] ->
+                    lists:flatten(lists:reverse(Acc));
+                _ ->
+                    [{Last, _, _}|_] = lists:reverse(Msgs),
+                    fetch_all(SrvId, Topic, Partition, Last+1, [Msgs|Acc])
             end;
         {error, Error} ->
             {error, Error}

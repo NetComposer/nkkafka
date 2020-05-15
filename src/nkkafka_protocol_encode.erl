@@ -240,10 +240,10 @@ offset_topic(#req_offset_topic{name=Name, partitions=Partitions}) ->
 
 
 %% @private
-offset_partition(#req_offset_partition{partition =ID, time=Time, max_num=MaxNum}) ->
+offset_partition(#req_offset_partition{partition=ID, time=Time, max_num=MaxNum}) ->
     Time2 = case Time of
         first -> -2;
-        last -> -1
+        next -> -1
     end,
     <<ID:32/signed-integer, Time2:64/signed-integer, MaxNum:32/signed-integer>>.
 

@@ -156,7 +156,7 @@ handle_call(get_info, _From, State) ->
     Data = #{
         next_offset => Offset,
         first_offset => find_offset(first, State),
-        last_offset => find_offset(last, State)-1,
+        last_offset => find_offset(next, State)-1,
         store_offsets => Store,
         store_group => Group,
         last_stored_offset => find_stored_offset(State)
@@ -239,14 +239,28 @@ terminate(_Reason, _State) ->
 
 %% @private
 do_init(stored, State) ->
-    Next = find_stored_offset(State),
-    ?LLOG(notice, "started (~p) (starting at last STORED next offset: ~p)",
-          [self(), Next], State),
-    {ok, State#state{next_offset=Next}};
+    First = find_offset(first, State),
+    Next = find_offset(next, State),
+    StoredNext = find_stored_offset(State),
+    if
+        StoredNext < First ->
+            ?LLOG(warning, "stored offset ~p is lower that first offset ~p. Switching to first",
+                  [StoredNext, First], State),
+            {ok, State#state{next_offset=First}};
+        StoredNext > Next ->
+            ?LLOG(warning, "stored offset ~p is greater that next offset ~p. "
+                  "No message will be processed until we reach there",
+                [StoredNext, Next], State);
+        true ->
+            ?LLOG(notice, "started (~p) (starting at STORED offset: ~p)",
+              [self(), Next], State),
+            {ok, State#state{next_offset=StoredNext}}
+    end;
 
+%% 'last' really means 'next'
 do_init(last, State) ->
-    Offset = find_offset(last, State),
-    ?LLOG(notice, "started (~p) (starting at LAST offset: ~p)", [self(), Offset], State),
+    Offset = find_offset(next, State),
+    ?LLOG(notice, "started (~p) (starting at NEXT offset: ~p)", [self(), Offset], State),
     {ok, State#state{next_offset = Offset}};
 
 do_init(first, State) ->
@@ -284,11 +298,10 @@ connect(State) ->
 find_offset(Pos, #state{srv=SrvId}=State) ->
     #state{topic=Topic, partition=Partition} = State,
     case nkkafka:get_offset(SrvId, Topic, Partition, Pos) of
-        {ok, NextOffset} ->
-            % Kafka returns next offset
-            NextOffset;
+        {ok, Offset} ->
+            Offset;
         {error, Error} ->
-            ?LLOG(error, "could not find last offset: ~p", [Error], State),
+            ?LLOG(error, "could not find offset: ~p", [Error], State),
             error({last_offset_error, Error})
     end.
 
@@ -300,7 +313,7 @@ find_stored_offset(State) ->
         {ok, _Meta, Offset} ->
             max(Offset, 0);
         {error, Error} ->
-            ?LLOG(error, "could not find last stored offset: ~p", [Error], State),
+            ?LLOG(error, "could not find stored offset: ~p", [Error], State),
             error({last_offset_error, Error})
     end.
 
@@ -321,6 +334,7 @@ read_messages(State) ->
                 {ok, #{hw_offset:=Last, total:=Total, messages:=Msgs}} ->
                     Time1 = nklib_date:epoch(msecs),
                     State2 = process_messages(Msgs, State),
+                    % Offset is pointing to next here
                     Time2 = nklib_date:epoch(msecs),
                     #state{next_offset = Next} = State2,
                     %?LLOG(notice, "read ~p messages from offset ~p to ~p (~p pending) "
