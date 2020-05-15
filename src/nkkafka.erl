@@ -22,7 +22,7 @@
 
 -module(nkkafka).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([get_metadata/1, get_partitions/2, get_offset/4]).
+-export([get_metadata/1, get_partitions/2, get_offset/4, get_stored_offsets/4]).
 -export([produce/5, fetch/5, get_leader/3, get_topic_leaders/2]).
 -export([pause_subscribers/2, subscribers_paused/1]).
 
@@ -143,6 +143,34 @@ get_offset(SrvId, Topic, Partition, Pos) ->
         {error, Error} ->
             {error, Error}
     end.
+
+
+get_stored_offsets(SrvId, Group, Topic, Partition) ->
+    case get_offset(SrvId, Topic, Partition, first) of
+        {ok, First} ->
+            case get_offset(SrvId, Topic, Partition, last) of
+                {ok, Last} ->
+                    case get_leader(SrvId, Topic, Partition) of
+                        {ok, BrokerId} ->
+                            case nkkafka_groups:offset_fetch({SrvId, BrokerId}, Group, Topic, Partition) of
+                                {ok, _Meta, Stored} ->
+                                    {ok, #{first=>First, last=>Last, stored=>Stored}};
+                                {error, Error} ->
+                                    {error, Error}
+                            end;
+                        {error, Error} ->
+                            {error, Error}
+                    end;
+                {error, Error} ->
+                    {error, Error}
+            end;
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
+
+
 
 
 %% @doc Produce a new message. Returns offset and broker pid
