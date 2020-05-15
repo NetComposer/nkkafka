@@ -335,9 +335,8 @@ read_messages(State) ->
                     ?LLOG(error, "could not read from offset ~p: NO LEADER, FORCING ERROR", [Offset], State),
                     error(force_kafka_error);
                 {error, {partition_error,offset_out_of_range}} ->
-                    ?LLOG(error, "could not read from offset ~p: OUT OF RANGE, TRYING NEXT", [Offset], State),
-                    State2 = State#state{next_offset=Offset+1},
-                    read_messages(State2);
+                    ?LLOG(error, "could not read from offset ~p: SETTING NEXT", [Offset], State),
+                    State#state{next_offset=Offset-1};
                 {error, Error} ->
                     % It the protocol process fails, we will detect and retry later
                     ?LLOG(error, "could not read from offset ~p: ~p", [Offset, Error], State),
