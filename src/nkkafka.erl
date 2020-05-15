@@ -22,7 +22,7 @@
 
 -module(nkkafka).
 -author('Carlos Gonzalez <carlosj.gf@gmail.com>').
--export([get_metadata/1, get_partitions/2, get_offset/4, get_stored_offsets/4]).
+-export([get_metadata/1, get_partitions/2, get_offset/4, get_offsets/2, get_stored_offsets/3]).
 -export([produce/5, fetch/5, fetch_all/4, get_leader/3, get_topic_leaders/2]).
 -export([pause_subscribers/2, subscribers_paused/1]).
 
@@ -112,7 +112,7 @@ get_partitions(SrvId, Topic) ->
 
 %% @doc Get the first existing or next offset for all partitions of a topic
 -spec get_offset(nkserver:id(), topic(), partition(), first|next) ->
-    {ok, #{partition() := offset() | {error, integer()}}} | {error, term()}.
+    {ok, offset()} | {error, term()}.
 
 get_offset(SrvId, Topic, Partition, Pos) ->
     Topic2 = to_bin(Topic),
@@ -145,16 +145,69 @@ get_offset(SrvId, Topic, Partition, Pos) ->
     end.
 
 
-get_stored_offsets(SrvId, Group, Topic, Partition) ->
-    case get_offset(SrvId, Topic, Partition, first) of
+%% @doc Get offsets for all partitions
+-spec get_offsets(nkserver:id(), topic()) ->
+    {ok, #{partition() := #{first:=offset(), next:=offset()}}} | {error, term()}.
+
+get_offsets(SrvId, Topic) ->
+    case get_partitions(SrvId, Topic) of
+        {ok, Partitions} ->
+            get_offsets(Partitions-1, SrvId, Topic, #{});
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
+%% @private
+get_offsets(Part, SrvId, Topic, Acc) ->
+    case get_offset(SrvId, Topic, Part, first) of
         {ok, First} ->
-            case get_offset(SrvId, Topic, Partition, next) of
+            case get_offset(SrvId, Topic, Part, next) of
                 {ok, Next} ->
-                    case get_leader(SrvId, Topic, Partition) of
+                    Acc2 = Acc#{Part => #{first=>First, next=>Next}},
+                    case Part > 0 of
+                        true ->
+                            get_offset(Part-1, SrvId, Topic, Acc2);
+                        false ->
+                            {ok, Acc2}
+                    end;
+                {error, Error} ->
+                    {error, Error}
+            end;
+        {error, Error} ->
+            {error, Error}
+    end.
+
+
+%% @doc Get offset stored by nkkafka_group:offset_commit/6 along with first and next
+-spec get_stored_offsets(nkserver:id(), binary(), topic()) ->
+    {ok, #{partition() := #{first:=offset(), next:=offset(), stored_next:=offset()}}} | {error, term()}.
+
+get_stored_offsets(SrvId, Group, Topic) ->
+    case get_partitions(SrvId, Topic) of
+        {ok, Partitions} ->
+            get_stored_offsets(Partitions-1, SrvId, Group, Topic, #{});
+        {error, Error} ->
+            {error, Error}
+    end.
+
+%% @private
+get_stored_offsets(Part, SrvId, Group, Topic, Acc) ->
+    case get_offset(SrvId, Topic, Part, first) of
+        {ok, First} ->
+            case get_offset(SrvId, Topic, Part, next) of
+                {ok, Next} ->
+                    case get_leader(SrvId, Topic, Part) of
                         {ok, BrokerId} ->
-                            case nkkafka_groups:offset_fetch({SrvId, BrokerId}, Group, Topic, Partition) of
+                            case nkkafka_groups:offset_fetch({SrvId, BrokerId}, Group, Topic, Part) of
                                 {ok, _Meta, Stored} ->
-                                    {ok, #{first=>First, next=>Next, stored_next=>Stored}};
+                                    Acc2 = Acc#{first => First, next => Next, stored_next => Stored},
+                                    case Part > 0 of
+                                        true ->
+                                            get_stored_offsets(Part - 1, SrvId, Group, Topic, Acc2);
+                                        false ->
+                                            {ok, Acc2}
+                                    end;
                                 {error, Error} ->
                                     {error, Error}
                             end;
