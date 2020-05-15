@@ -160,6 +160,7 @@ get_offsets(SrvId, Topic) ->
 
 %% @private
 get_offsets(Part, SrvId, Topic, Acc) ->
+    lager:error("NKLOG CALLING FOR ~p", [{Part, SrvId, Topic}]),
     case get_offset(SrvId, Topic, Part, first) of
         {ok, First} ->
             case get_offset(SrvId, Topic, Part, next) of
