@@ -201,7 +201,8 @@ get_stored_offsets(Part, SrvId, Group, Topic, Acc) ->
                         {ok, BrokerId} ->
                             case nkkafka_groups:offset_fetch({SrvId, BrokerId}, Group, Topic, Part) of
                                 {ok, _Meta, Stored} ->
-                                    Acc2 = Acc#{first => First, next => Next, stored_next => Stored},
+                                    Info = #{first => First, next => Next, stored_next => Stored},
+                                    Acc2 = Acc#{Part => Info},
                                     case Part > 0 of
                                         true ->
                                             get_stored_offsets(Part - 1, SrvId, Group, Topic, Acc2);
