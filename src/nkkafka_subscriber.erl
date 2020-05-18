@@ -382,12 +382,13 @@ fetch(State) ->
             }
         ],
         max_wait = 1000,
-        min_bytes = 0
+        min_bytes = 1
     },
     case nkkafka_broker:send_request(ConsumerPid, Request) of
         {ok, #{Topic:=#{Partition:=#{error:=Error}}}} ->
             {error, {partition_error, Error}};
         {ok, #{Topic:=#{Partition:=Data}}} ->
+            lager:error("NKLOG DATA1 ~p", [Data]),
             {ok, Data};
         {error, Error} ->
             {error, Error}
