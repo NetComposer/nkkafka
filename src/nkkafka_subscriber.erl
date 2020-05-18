@@ -332,6 +332,7 @@ read_messages(State) ->
                     %?LLOG(info, "no messages (~p)", [Time], State),
                     State;
                 {ok, #{hw_offset:=Last, total:=Total, messages:=Msgs}} ->
+                    lager:error("NKLOG DATA ~p", [Msgs]),
                     Time1 = nklib_date:epoch(msecs),
                     State2 = process_messages(Msgs, State),
                     % Offset is pointing to next here
@@ -387,12 +388,6 @@ fetch(State) ->
         {ok, #{Topic:=#{Partition:=#{error:=Error}}}} ->
             {error, {partition_error, Error}};
         {ok, #{Topic:=#{Partition:=Data}}} ->
-            case Data of
-                [] ->
-                    ok;
-                _ ->
-                    lager:error("NKLOG DATA ~p", [Data])
-            end,
             {ok, Data};
         {error, Error} ->
             {error, Error}
