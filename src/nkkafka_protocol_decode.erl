@@ -245,6 +245,10 @@ fetch_messages(Bin, Total, Acc) ->
             case erlang:crc32(Rest2) of
                 CRC32 ->
                     <<_Magic:8/signed-integer, _Attr:8/signed-integer, Rest3/binary>> = Rest2,
+                    lager:error("NKLOG _MAGIC ~p", [_Magic]),
+                    lager:error("NKLOG _Attr ~p", [_Attr]),
+
+
                     {Key, Rest4} = bytes(Rest3),
                     {Value, <<>>} = bytes(Rest4),
                     Rec = {Offset, Key, Value},
