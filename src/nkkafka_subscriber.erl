@@ -387,6 +387,7 @@ fetch(State) ->
         {ok, #{Topic:=#{Partition:=#{error:=Error}}}} ->
             {error, {partition_error, Error}};
         {ok, #{Topic:=#{Partition:=Data}}} ->
+            lager:error("NKLOG DATA ~p", [Data]),
             {ok, Data};
         {error, Error} ->
             {error, Error}
