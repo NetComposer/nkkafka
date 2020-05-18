@@ -39,6 +39,14 @@ decode(?PRODUCE_REQUEST, Data) ->
     {Topics, <<>>} = produce_topics(TopicsCount, R1, #{}),
     Topics;
 
+%%% v1
+%%decode(?FETCH_REQUEST, Data) ->
+%%    <<_ThrottleTimeMsecs:32, R1/binary>> = Data,
+%%    {TopicsCount, R2} = array(R1),
+%%    {TopicsMap, <<>>} = fetch_topics(TopicsCount, R2, #{}),
+%%    TopicsMap;
+
+%%  v0
 decode(?FETCH_REQUEST, Data) ->
     {TopicsCount, R1} = array(Data),
     {TopicsMap, <<>>} = fetch_topics(TopicsCount, R1, #{}),
@@ -237,6 +245,36 @@ fetch_partition(_Pos, Data, Acc) ->
 fetch_messages(<<>>, Total, Acc) ->
     {Total, lists:reverse(Acc)};
 
+% V1
+% https://kafka.apache.org/protocol#The_Messages_Fetch
+% https://kafka.apache.org/documentation/#messageformat
+%%fetch_messages(Bin, Total, Acc) ->
+%%    case Bin of
+%%        <<Offset:64/signed-integer, Size:32/signed-integer, Body:Size/binary, R1/binary>> ->
+%%            <<CRC:32/signed-integer, Rest2/binary>> = Body,
+%%            CRC32 = CRC band 16#FFFFFFFF,
+%%            case erlang:crc32(Rest2) of
+%%                CRC32 ->
+%%                    <<_Magic:8/signed-integer, _Attr:8/signed-integer, TS:64/signed_integer, Rest3/binary>> = Rest2,
+%%                    lager:error("NKLOG _TS", [TS]),
+%%
+%%
+%%                    {Key, Rest4} = bytes(Rest3),
+%%                    {Value, <<>>} = bytes(Rest4),
+%%                    Rec = {Offset, Key, Value},
+%%                    fetch_messages(R1, Total+1, [Rec|Acc]);
+%%                V ->
+%%                    lager:error("NkKAFKA invalid message crc32, ~p:~p~n", [V, CRC32]),
+%%                    fetch_messages(R1, Total, Acc)
+%%            end;
+%%        <<_Offset:64/signed-integer, _Size:32/signed-integer, _Rest/binary>> ->
+%%            %lager:warning("discard chunk at ~p, size is ~p but has ~p", [Offset, Size, byte_size(Rest)]),
+%%            fetch_messages(<<>>, Total, Acc);
+%%        _Other ->
+%%            %lager:warning("discard ~p bytes", [byte_size(_Other)]),
+%%            fetch_messages(<<>>, Total, Acc)
+%%    end.
+
 fetch_messages(Bin, Total, Acc) ->
     case Bin of
         <<Offset:64/signed-integer, Size:32/signed-integer, Body:Size/binary, R1/binary>> ->
@@ -245,10 +283,6 @@ fetch_messages(Bin, Total, Acc) ->
             case erlang:crc32(Rest2) of
                 CRC32 ->
                     <<_Magic:8/signed-integer, _Attr:8/signed-integer, Rest3/binary>> = Rest2,
-                    lager:error("NKLOG _MAGIC ~p", [_Magic]),
-                    lager:error("NKLOG _Attr ~p", [_Attr]),
-
-
                     {Key, Rest4} = bytes(Rest3),
                     {Value, <<>>} = bytes(Rest4),
                     Rec = {Offset, Key, Value},
@@ -264,6 +298,7 @@ fetch_messages(Bin, Total, Acc) ->
             %lager:warning("discard ~p bytes", [byte_size(_Other)]),
             fetch_messages(<<>>, Total, Acc)
     end.
+
 
 
 %% @private
